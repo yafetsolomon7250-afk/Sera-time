@@ -1,3 +1,0 @@
-import { NextRequest, NextResponse } from "next/server";
-export async function POST(req:NextRequest){try{const u=await req.json();const msg=u?.message;if(msg?.chat?.id){const token=process.env.TELEGRAM_BOT_TOKEN;if(token){const app=process.env.APP_URL||"";const text="እንኳን ወደ Sera Time በደህና መጡ! 👋\n\nስራ ይስሩ፣ ገቢ ያግኙ፣ ወይም ስራ ይለጥፉ።";await fetch(`https://api.telegram.org/bot${token}/sendMessage`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:msg.chat.id,text,reply_markup:{inline_keyboard:[[ {text:"🚀 Sera Timeን ክፈት",web_app:{url:app}} ]]}})})}}return NextResponse.json({ok:true})}catch{return NextResponse.json({ok:true})}}
-export async function GET(){return NextResponse.json({ok:true})}
