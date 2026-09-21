@@ -1,19 +1,30 @@
-import type { Metadata, Viewport } from "next";
-import type { ReactNode } from "react";
-import Script from "next/script";
-import "./globals.css";
+
+import type { Metadata } from 'next';
+import Script from 'next/script';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Sera Time",
-  description: "የኢትዮጵያ ስራ እና ገቢ መድረክ",
-  manifest: "/manifest.webmanifest",
+  title: 'Sera Time',
+  description: 'Sera Time Web Platform',
 };
-export const viewport: Viewport = { width:"device-width", initialScale:1, viewportFit:"cover", themeColor:"#07111f" };
 
-export default function RootLayout({children}:{children:ReactNode}) {
-  return <html lang="am"><body>
-    <Script src="https://telegram.org/js/telegram-web-app.js?63" strategy="beforeInteractive" />
-    <Script src="https://sad.adsgram.ai/js/sad.min.js" strategy="afterInteractive" />
-    {children}
-  </body></html>;
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <head>
+        {/* Telegram WebApp SDK */}
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
+      </head>
+      <body className="antialiased bg-slate-950 text-white min-h-screen">
+        {children}
+      </body>
+    </html>
+  );
 }
