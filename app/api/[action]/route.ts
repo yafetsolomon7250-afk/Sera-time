@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   authUser, rpc, notify, tgMessage, postToChannel, ensureWorker, num, text, db,
-} from "@/lib/server";
+} from "../../../lib/server";
 
 export const runtime = "nodejs";
 
