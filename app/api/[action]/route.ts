@@ -144,21 +144,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ act
         const { data: t } = await db().from("tasks").select("assigned_worker_id,title").eq("id", taskId).maybeSingle();
         const r = await rpc("approve_task", { p_user_id: user.id, p_task_id: taskId });
         // XP for worker
+        // XP for worker
         if (t?.assigned_worker_id) {
-          await db().rpc("ensure_user", { p_telegram_id: "0" }).catch(() => {});
-          await db().from("users").update({
-            xp: undefined as any,
-          }).eq("id", t.assigned_worker_id).then(() => {});
-          // simple xp bump via raw sql alternative
-          await db().from("users").select("xp").eq("id", t.assigned_worker_id).maybeSingle().then(async ({ data: wu }) => {
-            if (wu) {
-              const newXp = (wu.xp || 0) + 50;
-              const newLevel = Math.floor(newXp / 200) + 1;
-              await db().from("users").update({ xp: newXp, level: newLevel }).eq("id", t.assigned_worker_id);
-            }
-          });
-          await notify(t.assigned_worker_id, "ስራዎ ጸድቋል", "ክፍያዎ ወደ ዋሌትዎ ተጨምሯል። +50 XP", "approval");
-          await tgMessage(t.assigned_worker_id, `✅ ስራዎ ጸድቋል።\n<b>${t.title || ""}</b>\nክፍያው ወደ ዋሌትዎ ገብቷል።`);
+          const { data: wu } = await db()
+            .from("users")
+            .select("xp")
+            .eq("id", t.assigned_worker_id)
+            .maybeSingle();
+          if (wu) {
+            const newXp = (Number(wu.xp) || 0) + 50;
+            const newLevel = Math.floor(newXp / 200) + 1;
+            await db()
+              .from("users")
+              .update({ xp: newXp, level: newLevel })
+              .eq("id", t.assigned_worker_id);
+          }
+          await notify(
+            t.assigned_worker_id,
+            "ስራዎ ጸድቋል",
+            "ክፍያዎ ወደ ዋሌትዎ ተጨምሯል። +50 XP",
+            "approval"
+          );
+          await tgMessage(
+            t.assigned_worker_id,
+            `✅ ስራዎ ጸድቋል።\n<b>${t.title || ""}</b>\nክፍያው ወደ ዋሌትዎ ገብቷል።`
+          );
         }
         // optional rating
         if (body.rating && t?.assigned_worker_id) {
