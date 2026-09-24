@@ -195,43 +195,45 @@ export default function App() {
   const tried = useRef(false);
 
   const loadMe = useCallback(async () => {
-    // Wait a bit for Telegram script to inject
-    await new Promise((r) => setTimeout(r, 300));
+    setLoading(true);
+    setError("");
+    // Wait briefly for Telegram WebApp script (inside bot)
+    await new Promise((r) => setTimeout(r, 400));
     const wa = window.Telegram?.WebApp;
+    const hasTg = !!(wa && wa.initData);
 
-    if (!wa || !wa.initData) {
-      // Retry a few times for Telegram script
-      if (retryCount < 3) {
-        setRetryCount((c) => c + 1);
-        setTimeout(() => loadMe(), 500);
-        return;
-      }
-      // Allow direct browser access with guest id
+    if (hasTg) {
+      try {
+        wa.ready?.();
+        wa.expand?.();
+        wa.setBackgroundColor?.("#07111f");
+        wa.setHeaderColor?.("#07111f");
+      } catch {}
+      setTelegramReady(true);
+    } else {
+      // Browser / outside Telegram → guest mode
       setTelegramReady(true);
     }
 
     try {
-      wa.ready?.();
-      wa.expand?.();
-      wa.setBackgroundColor?.("#07111f");
-      wa.setHeaderColor?.("#07111f");
       const x = await api("me");
       setMe(x.user);
       const saved = localStorage.getItem("sera_role");
       const initial =
         saved === "worker" || saved === "client"
           ? saved
-          : x.user.active_role === "client"
+          : x.user?.active_role === "client"
           ? "client"
           : "worker";
       setRole(initial as Role);
       if (!saved) setOnboard(true);
     } catch (e: any) {
-      setError(e.message);
+      setError(e.message || "መግባት አልተሳካም");
+      setMe(null);
     } finally {
       setLoading(false);
     }
-  }, [retryCount]);
+  }, []);
 
   useEffect(() => {
     if (tried.current) return;
