@@ -80,9 +80,20 @@ export async function authUser(initData: string, ref?: string, guestId?: string)
 
   // Mode 2: Direct browser link — persistent guest id (web_XXXX)
   const gid = String(guestId || "").trim();
-  if (!gid || !/^web_[a-zA-Z0-9_-]{8,64}$/.test(gid)) {
+  if (!gid || !/^web_[a-zA-Z0-9_-]{8,80}$/.test(gid)) {
     throw new Error("Telegram ላይ Sera Timeን ከBot ይክፈቱ ወይም በድረ-ገጽ ይግቡ።");
   }
+  // Prefer ensure_user RPC (security definer, has grants)
+  try {
+    const { data, error } = await db().rpc("ensure_user", {
+      p_telegram_id: gid,
+      p_first_name: "Web User",
+      p_last_name: "",
+      p_username: null,
+      p_start_param: String(ref || ""),
+    });
+    if (!error && data) return data;
+  } catch {}
   const { data: existing } = await db()
     .from("users")
     .select("*")
@@ -100,12 +111,13 @@ export async function authUser(initData: string, ref?: string, guestId?: string)
     .select("*")
     .maybeSingle();
   if (error || !created) {
-    // race: try select again
     const { data: again } = await db().from("users").select("*").eq("telegram_id", gid).maybeSingle();
     if (again) return again;
-    throw error || new Error("መለያ መፍጠር አልተሳካም");
+    throw new Error((error as any)?.message || "የድረ-ገጽ መለያ መፍጠር አልተሳካም። GRANT_SERVICE_ROLE.sql ይሩጡ።");
   }
-  await db().from("wallets").upsert({ user_id: created.id, available: 0, locked: 0 }, { onConflict: "user_id" });
+  try {
+    await db().from("wallets").upsert({ user_id: created.id, available: 0, locked: 0 }, { onConflict: "user_id" });
+  } catch {}
   return created;
 }
 
