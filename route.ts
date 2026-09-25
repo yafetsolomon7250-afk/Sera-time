@@ -1,0 +1,98 @@
+import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
+import { createClient } from "@supabase/supabase-js";
+
+export const runtime = "nodejs";
+
+const db = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
+
+function verify(initData: string) {
+  const p = new URLSearchParams(initData);
+  const h = p.get("hash");
+  if (!h) throw new Error("Telegram auth required");
+  p.delete("hash");
+  const s = [...p.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("\n");
+  const key = crypto
+    .createHmac("sha256", "WebAppData")
+    .update(process.env.TELEGRAM_BOT_TOKEN || "")
+    .digest();
+  const e = crypto.createHmac("sha256", key).update(s).digest("hex");
+  if (h.length !== e.length || !crypto.timingSafeEqual(Buffer.from(h), Buffer.from(e))) {
+    throw new Error("Invalid Telegram auth");
+  }
+  const u = JSON.parse(p.get("user") || "{}");
+  if (!u.id) throw new Error("Telegram user missing");
+  return String(u.id);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const form = await req.formData();
+    const tg = verify(String(form.get("initData") || ""));
+    const file = form.get("file");
+    if (!(file instanceof File)) throw new Error("File required");
+    if (file.size > 25 * 1024 * 1024) throw new Error("Maximum file size is 25 MB");
+
+    const allowed = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/gif",
+      "application/pdf",
+      "video/mp4",
+      "video/webm",
+      "audio/mpeg",
+      "audio/wav",
+      "application/zip",
+      "application/x-zip-compressed",
+    ];
+    if (!allowed.includes(file.type) && file.type !== "") {
+      // Allow if extension looks safe
+      const ext = (file.name.split(".").pop() || "").toLowerCase();
+      if (!["jpg", "jpeg", "png", "webp", "gif", "pdf", "mp4", "webm", "mp3", "wav", "zip"].includes(ext)) {
+        throw new Error("File type not allowed");
+      }
+    }
+
+    const { data: buckets } = await db.storage.listBuckets();
+    if (!buckets?.some((b: any) => b.name === "sera-time-files")) {
+      const { error: e } = await db.storage.createBucket("sera-time-files", {
+        public: false,
+        fileSizeLimit: 25 * 1024 * 1024,
+      });
+      if (e && !String(e.message).toLowerCase().includes("already")) throw e;
+    }
+
+    const ext =
+      (file.name.split(".").pop() || "bin").replace(/[^a-z0-9]/gi, "").slice(0, 8) || "bin";
+    const path = `${tg}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { error } = await db.storage
+      .from("sera-time-files")
+      .upload(path, bytes, { contentType: file.type || "application/octet-stream", upsert: false });
+    if (error) throw error;
+
+    const { data: signed, error: signedError } = await db.storage
+      .from("sera-time-files")
+      .createSignedUrl(path, 3600);
+    if (signedError) throw signedError;
+
+    return NextResponse.json({
+      ok: true,
+      url: signed.signedUrl,
+      path,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Upload failed" }, { status: 400 });
+  }
+}
