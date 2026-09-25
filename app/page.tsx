@@ -1,58 +1,4160 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+
+import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase-browser";
 
-type Lang="am"|"en"; type Role="worker"|"client";
-const SKILLS=[
-["graphic_design","Graphic Design","🎨"],["logo_design","Logo Design","✨"],["ui_ux","UI/UX Design","🧩"],["video_editing","Video Editing","🎬"],["photo_editing","Photo Editing","📸"],["motion_graphics","Motion Graphics","💫"],["animation","Animation","🎞️"],["voice_over","Voice Over","🎙️"],["writing","Writing / Copywriting","✍️"],["translation","Translation","🌐"],["transcription","Transcription","⌨️"],["data_entry","Data Entry","📊"],["excel","Excel / Sheets","📈"],["data_analysis","Data Analysis","📉"],["web_research","Web Research","🔎"],["programming","Programming","💻"],["website_development","Website Development","🌍"],["mobile_app","Mobile App Development","📱"],["wordpress","WordPress","📰"],["automation","Automation","⚙️"],["ai_services","AI Services","🤖"],["marketing","Marketing","📣"],["social_media","Social Media","📱"],["seo","SEO","🚀"],["virtual_assistant","Virtual Assistant","🧑‍💼"],["customer_support","Customer Support","💬"],["research","Research","🔬"],["accounting","Accounting","🧾"],["architecture","Architecture","🏗️"],["education","Education / Tutoring","🎓"]] as const;
-const t=(l:Lang,a:string,b:string)=>l==="am"?a:b;
+type Lang = "am" | "en";
+type Role = "worker" | "client";
 
-async function api(accessToken:string,action:string,body:any={}){const r=await fetch("/api/sera",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action,accessToken,...body})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d.data}
-async function upload(accessToken:string,file:File,kind="file"){const fd=new FormData();fd.append("accessToken",accessToken);fd.append("file",file);fd.append("kind",kind);const r=await fetch("/api/upload",{method:"POST",body:fd});const d=await r.json();if(!r.ok)throw new Error(d.error||"Upload failed");return d}
+const SKILLS = [
+  ["graphic_design", "Graphic Design", "🎨"],
+  ["logo_design", "Logo Design", "✨"],
+  ["ui_ux", "UI/UX Design", "🧩"],
+  ["video_editing", "Video Editing", "🎬"],
+  ["photo_editing", "Photo Editing", "📸"],
+  ["motion_graphics", "Motion Graphics", "💫"],
+  ["animation", "Animation", "🎞️"],
+  ["voice_over", "Voice Over", "🎙️"],
+  ["writing", "Writing / Copywriting", "✍️"],
+  ["translation", "Translation", "🌐"],
+  ["transcription", "Transcription", "⌨️"],
+  ["data_entry", "Data Entry", "📊"],
+  ["excel", "Excel / Sheets", "📈"],
+  ["data_analysis", "Data Analysis", "📉"],
+  ["web_research", "Web Research", "🔎"],
+  ["programming", "Programming", "💻"],
+  ["website_development", "Website Development", "🌍"],
+  ["mobile_app", "Mobile App Development", "📱"],
+  ["wordpress", "WordPress", "📰"],
+  ["automation", "Automation", "⚙️"],
+  ["ai_services", "AI Services", "🤖"],
+  ["marketing", "Marketing", "📣"],
+  ["social_media", "Social Media", "📱"],
+  ["seo", "SEO", "🚀"],
+  ["virtual_assistant", "Virtual Assistant", "🧑‍💼"],
+  ["customer_support", "Customer Support", "💬"],
+  ["research", "Research", "🔬"],
+  ["accounting", "Accounting", "🧾"],
+  ["architecture", "Architecture", "🏗️"],
+  ["education", "Education / Tutoring", "🎓"],
+] as const;
 
-export default function App(){
- const [lang,setLangState]=useState<Lang|null>(null); const setLang=(v:Lang)=>{setLangState(v);try{localStorage.setItem("sera_lang",v)}catch{}}; const [stage,setStage]=useState<"welcome"|"auth"|"about"|"role"|"worker-onboard"|"app">("welcome");
- const [mode,setMode]=useState<"login"|"signup">("signup"); const [role,setRole]=useState<Role>("worker"); const [session,setSession]=useState<any>(null); const [profile,setProfile]=useState<any>(null); const [tab,setTab]=useState("home"); const [data,setData]=useState<any>({}); const [loading,setLoading]=useState(false); const [error,setError]=useState("");
- const [auth,setAuth]=useState({email:"",password:"",name:""});
- const [worker,setWorker]=useState({skills:[] as string[],years:{} as Record<string,number>,fullName:"",bio:"",portfolioUrl:"",avatarUrl:"",avatarPath:"",selfieUrl:"",selfiePath:""});
- const [refresh,setRefresh]=useState(0);
- const msg=(a:string,b:string)=>t(lang||"en",a,b);
- useEffect(()=>{try{const l=localStorage.getItem("sera_lang");if(l==="am"||l==="en")setLangState(l)}catch{};supabase.auth.getSession().then(({data})=>{if(data.session){setSession(data.session);api(data.session.access_token,"me").then(p=>{setProfile(p);setRole(p.active_role||"worker");setStage(p.face_verification_status?"app":(p.active_role==="worker"&&(!p.full_name||!p.worker_onboarded)?"worker-onboard":"app"));}).catch(()=>{})}});const {data:sub}=supabase.auth.onAuthStateChange((_e,s)=>{setSession(s);if(s&&!profile)setStage("role")});return()=>sub.subscription.unsubscribe()},[]);
- useEffect(()=>{if(!session||stage!=="app")return;api(session.access_token,tab==="home"?"dashboard":tab==="tasks"?"worker-tasks":tab==="my"?"my-tasks":tab==="notifications"?"notifications":tab==="wallet"?"wallet":tab==="profile"?"profile":tab==="posts"?"client-posts":"dashboard").then(setData).catch(e=>setError(e.message))},[session,stage,tab,refresh]);
- const doAuth=async()=>{setLoading(true);setError("");try{if(mode==="signup"){const {data,error}=await supabase.auth.signUp({email:auth.email,password:auth.password,options:{data:{full_name:auth.name}}});if(error)throw error;if(!data.session){setError(msg("ሂሳብዎ ተፈጥሯል። ኢሜይልዎን ያረጋግጡ።","Account created. Check your email to confirm your account."));return}setSession(data.session);setStage("role")}else{const {data,error}=await supabase.auth.signInWithPassword({email:auth.email,password:auth.password});if(error)throw error;setSession(data.session);setStage("role")}}catch(e:any){setError(e.message)}finally{setLoading(false)}};
- const chooseRole=async(r:Role)=>{setRole(r);if(!session)return;await api(session.access_token,"set-role",{role:r});if(r==="worker")setStage("worker-onboard");else setStage("app")};
- const saveWorker=async()=>{if(worker.skills.length!==2){setError(msg("እባክዎ 2 ችሎታ ብቻ ይምረጡ።","Please choose exactly 2 skills."));return}if(!worker.fullName.trim()||!worker.avatarUrl||!worker.selfieUrl){setError(msg("ሙሉ ስም፣ ፕሮፋይል ፎቶ እና ሴልፊ ያስፈልጋል።","Full name, profile photo and selfie are required."));return}setLoading(true);try{await api(session.access_token,"update-profile",{fullName:worker.fullName,bio:worker.bio,portfolioUrl:worker.portfolioUrl,avatarUrl:worker.avatarUrl,skills:worker.skills.map(s=>({skill:s,years:Number(worker.years[s]||0)}))});await api(session.access_token,"update-profile",{selfieUrl:"",selfiePath:worker.selfiePath,faceVerificationStatus:"pending",workerOnboarded:true});setProfile(await api(session.access_token,"profile"));setStage("app")}catch(e:any){setError(e.message)}finally{setLoading(false)}};
- const signout=async()=>{await supabase.auth.signOut();location.reload()};
- if(!lang)return <div className="center"><div className="welcome card" style={{width:"min(480px,92%)"}}><img src="/welcome.svg"/><div className="brand"><div className="logo">S</div><div><b>Sera Time</b><small>Work • Earn • Grow</small></div></div><h2>Choose your language</h2><p className="muted">ቋንቋዎን ይምረጡ</p><div className="grid2"><button className="btn" onClick={()=>setLang("am")}>🇪🇹 አማርኛ</button><button className="btn blue" onClick={()=>setLang("en")}>🇬🇧 English</button></div></div></div>;
- if(stage==="welcome")return <Welcome lang={lang} next={()=>setStage("about")}/>;
- if(stage==="about")return <About lang={lang} next={()=>setStage("auth")}/>;
- if(stage==="auth")return <Auth lang={lang} mode={mode} setMode={setMode} auth={auth} setAuth={setAuth} loading={loading} error={error} submit={doAuth}/>;
- if(stage==="role")return <RolePick lang={lang} role={role} choose={chooseRole}/>;
- if(stage==="worker-onboard")return <WorkerOnboard lang={lang} worker={worker} setWorker={setWorker} loading={loading} error={error} session={session} save={saveWorker}/>;
- return <Main lang={lang} role={role} setRole={setRole} tab={tab} setTab={setTab} data={data} profile={profile} session={session} refresh={()=>setRefresh(x=>x+1)} error={error} setError={setError} signout={signout}/>;
+const t = (l: Lang, am: string, en: string) =>
+  l === "am" ? am : en;
+
+async function api(
+  accessToken: string,
+  action: string,
+  body: any = {}
+) {
+  const r = await fetch("/api/sera", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      action,
+      accessToken,
+      ...body,
+    }),
+  });
+
+  const d = await r.json();
+
+  if (!r.ok) {
+    throw new Error(d.error || "Request failed");
+  }
+
+  return d.data;
 }
 
-function Welcome({lang,next}:{lang:Lang;next:()=>void}){return <div className="center"><div className="welcome" style={{width:"min(560px,100%)"}}><img src="/welcome.svg"/><div className="brand"><div className="logo">S</div><div><b>Sera Time</b><small>{t(lang,"ስራ • ገቢ • እድል","Work • Earn • Grow")}</small></div></div><h1>{t(lang,"እንኳን ወደ Sera Time በደህና መጡ","Welcome to Sera Time")}</h1><p className="muted">{t(lang,"የኢትዮጵያ ዲጂታል ስራ ገበያ። ችሎታዎን ይጠቀሙ፣ ስራ ይስሩ ወይም ባለሙያ ይፈልጉ።","Ethiopia-focused digital work marketplace. Work with your skills or find the right professional.")}</p><button className="btn full" onClick={next}>{t(lang,"መጀመሪያ እንጀምር →","Get started →")}</button></div></div>}
-function About({lang,next}:{lang:Lang;next:()=>void}){const items=lang==="am"?["በችሎታዎ ስራ ያግኙ።","እስከ 10 ሰራተኞች ስራን መጠየቅ ይችላሉ።","ደንበኛው ከአመልካቾች አንዱን ይመርጣል።","ስራው ሲፀድቅ ክፍያው ወደ ዋሌት ይገባል።","ማሳወቂያዎች በእያንዳንዱ እርምጃ ይመጣሉ።"]:["Find work that matches your skills.","Each job accepts up to 10 worker applications.","The client reviews portfolios and selects one worker.","Payment is released to the worker after approval.","Notifications keep both sides updated."];return <div className="center"><div className="screen" style={{width:"min(560px,100%)"}}><div className="brand"><div className="logo">S</div><div><b>Sera Time</b><small>{t(lang,"ስለ መድረኩ","About the platform")}</small></div></div><div className="card"><span className="pill">✦ {t(lang,"እንዴት ይሰራል","How it works")}</span><h1>{t(lang,"Sera Time ምንድነው?","What is Sera Time?")}</h1>{items.map((x,i)=><div className="notice" style={{marginTop:10}} key={i}>{i+1}. {x}</div>)}</div><button className="btn full" onClick={next}>{t(lang,"ግባ / ተመዝገብ →","Login / Sign up →")}</button></div></div>}
-function Auth({lang,mode,setMode,auth,setAuth,loading,error,submit}:{lang:Lang;mode:"login"|"signup";setMode:(x:any)=>void;auth:any;setAuth:(x:any)=>void;loading:boolean;error:string;submit:()=>void}){return <div className="center"><div className="screen" style={{width:"min(500px,100%)"}}><div className="brand"><div className="logo">S</div><div><b>Sera Time</b><small>{t(lang,"የመለያ መግቢያ","Account access")}</small></div></div><div className="tabs"><button className={`btn ${mode==="signup"?"":"secondary"}`} onClick={()=>setMode("signup")}>{t(lang,"መመዝገብ","Sign up")}</button><button className={`btn ${mode==="login"?"":"secondary"}`} onClick={()=>setMode("login")}>{t(lang,"መግባት","Log in")}</button></div><div className="card"><h2>{mode==="signup"?t(lang,"አዲስ መለያ","Create your account"):t(lang,"እንኳን ደህና መጡ","Welcome back")}</h2>{mode==="signup"&&<><label className="label">{t(lang,"ሙሉ ስም","Full name")}</label><input className="input" value={auth.name} onChange={e=>setAuth({...auth,name:e.target.value})}/></>}<label className="label">Email</label><input className="input" type="email" value={auth.email} onChange={e=>setAuth({...auth,email:e.target.value})}/><label className="label">Password</label><input className="input" type="password" value={auth.password} onChange={e=>setAuth({...auth,password:e.target.value})}/>{error&&<div className="notice error" style={{marginTop:12}}>{error}</div>}<button className="btn full" style={{marginTop:14}} disabled={loading} onClick={submit}>{loading?t(lang,"እየተጫነ…","Loading…"):mode==="signup"?t(lang,"መለያ ፍጠር","Create account"):t(lang,"ግባ","Log in")}</button></div><p className="muted" style={{fontSize:12}}>Sera Time will never ask you for a password belonging to another website or portfolio service.</p></div></div>}
-function RolePick({lang,role,choose}:{lang:Lang;role:Role;choose:(r:Role)=>void}){return <div className="center"><div className="screen" style={{width:"min(560px,100%)"}}><div className="card"><span className="pill">1 / 2</span><h1>{t(lang,"ሚናዎን ይምረጡ","Choose your role")}</h1><p className="muted">{t(lang,"በኋላ ሚናዎን መቀየር ይችላሉ።","You can switch roles later.")}</p><div className="grid2"><button className={`choice ${role==="worker"?"selected":""}`} onClick={()=>choose("worker")}><div className="icon">👷</div><h3>{t(lang,"ሰራተኛ","Worker")}</h3><p className="muted">{t(lang,"ችሎታዎን በመጠቀም ስራ ይስሩ።","Apply for jobs using your skills.")}</p></button><button className={`choice ${role==="client"?"selected":""}`} onClick={()=>choose("client")}><div className="icon">💼</div><h3>{t(lang,"ደንበኛ","Client")}</h3><p className="muted">{t(lang,"ስራ ይለጥፉ እና ባለሙያ ይምረጡ።","Post jobs and select a professional.")}</p></button></div></div></div></div>}
-function WorkerOnboard({lang,worker,setWorker,loading,error,session,save}:{lang:Lang;worker:any;setWorker:(x:any)=>void;loading:boolean;error:string;session:any;save:()=>void}){const toggle=(k:string)=>{const has=worker.skills.includes(k);let skills=has?worker.skills.filter((x:string)=>x!==k):worker.skills.length<2?[...worker.skills,k]:worker.skills;setWorker({...worker,skills})};const file=async(e:any,kind:string)=>{const f=e.target.files?.[0];if(!f)return;try{const d=await upload(session.access_token,f,kind);setWorker({...worker,...(kind==="avatar"?{avatarUrl:d.url,avatarPath:d.path}:{selfieUrl:d.url,selfiePath:d.path})})}catch(err:any){alert(err.message)}};return <div className="screen"><div className="brand"><div className="logo">S</div><div><b>Sera Time</b><small>{t(lang,"የሰራተኛ መመዝገቢያ","Worker profile setup")}</small></div></div><div className="card"><span className="pill">2 / 2</span><h1>{t(lang,"የሰራተኛ መገለጫዎን ያዘጋጁ","Build your worker profile")}</h1><p className="muted">{t(lang,"ይህ መረጃ ደንበኞች እርስዎን እንዲመርጡ ይረዳል።","Clients use this information to choose the right worker.")}</p><label className="label">{t(lang,"ችሎታዎ — 2 ብቻ","Skills — exactly 2")}</label><div className="grid2">{SKILLS.map(([k,n,ic])=><button key={k} className={`skill ${worker.skills.includes(k)?"selected":""}`} onClick={()=>toggle(k)}>{ic} {n}{worker.skills.includes(k)&&<small>✓ selected</small>}</button>)}</div>{worker.skills.map((k:string)=><div key={k}><label className="label">{SKILLS.find(x=>x[0]===k)?.[1]} — {t(lang,"የልምድ ዓመታት","years of experience")}</label><input className="input" type="number" min="0" max="50" value={worker.years[k]||0} onChange={e=>setWorker({...worker,years:{...worker.years,[k]:Number(e.target.value)}})}/></div>)}<label className="label">{t(lang,"ሙሉ ስም","Full name")}</label><input className="input" value={worker.fullName} onChange={e=>setWorker({...worker,fullName:e.target.value})}/><label className="label">{t(lang,"የስራ መግለጫ","Professional description")}</label><textarea className="textarea" value={worker.bio} onChange={e=>setWorker({...worker,bio:e.target.value})}/><label className="label">{t(lang,"Portfolio link (optional)","Portfolio link (optional)")}</label><input className="input" placeholder="https://…" value={worker.portfolioUrl} onChange={e=>setWorker({...worker,portfolioUrl:e.target.value})}/><label className="label">{t(lang,"የፊት ፎቶ","Profile photo")}</label><div className="filebox"><input id="avatar" type="file" accept="image/*" capture="user" onChange={e=>file(e,"avatar")}/><label htmlFor="avatar" className="btn secondary">📷 {worker.avatarUrl?t(lang,"ፎቶ ተጭኗል","Photo uploaded"):t(lang,"ፎቶ ያንሱ / ይጫኑ","Take / upload photo")}</label>{worker.avatarUrl&&<img className="profilePic" src={worker.avatarUrl} alt="profile"/>}</div><label className="label">{t(lang,"የፊት ማረጋገጫ selfie","Identity selfie")}</label><div className="filebox"><input id="selfie" type="file" accept="image/*" capture="user" onChange={e=>file(e,"selfie")}/><label htmlFor="selfie" className="btn secondary">🤳 {worker.selfieUrl?t(lang,"Selfie ተልኳል","Selfie uploaded"):t(lang,"Selfie ያንሱ","Take selfie")}</label><small className="muted" style={{display:"block",marginTop:10}}>{t(lang,"ማረጋገጫው በሰራተኛ ግምገማ ሊጠናቀቅ ይችላል።","Identity verification may be reviewed before approval.")}</small></div>{error&&<div className="notice error">{error}</div>}<button className="btn full" disabled={loading} onClick={save}>{loading?t(lang,"እየተቀመጠ…","Saving…"):t(lang,"መገለጫውን አስቀምጥ →","Save profile →")}</button></div></div>}
+async function upload(
+  accessToken: string,
+  file: File,
+  kind = "file"
+) {
+  const fd = new FormData();
 
-function Main({lang,role,setRole,tab,setTab,data,profile,session,refresh,error,setError,signout}:{lang:Lang;role:Role;setRole:(r:Role)=>void;tab:string;setTab:(x:string)=>void;data:any;profile:any;session:any;refresh:()=>void;error:string;setError:(x:string)=>void;signout:()=>void}){const [showRole,setShowRole]=useState(false);const switchRole=async(r:Role)=>{await api(session.access_token,"set-role",{role:r});setRole(r);setShowRole(false);setTab("home");refresh()}; useEffect(()=>{const h=()=>setTab("admin");window.addEventListener("sera-admin",h);return()=>window.removeEventListener("sera-admin",h)},[setTab]);return <div className="app"><div className="topbar"><div className="topbar-row"><div className="brand" style={{margin:0}}><div className="logo" style={{width:42,height:42,fontSize:19}}>S</div><div><b>Sera Time</b><small>{role==="worker"?"Worker":"Client"}</small></div></div><div style={{display:"flex",gap:7}}><button className="iconbtn" onClick={()=>setTab("notifications")}>🔔</button><button className="iconbtn" onClick={()=>setShowRole(!showRole)}>⇄</button></div></div>{showRole&&<div className="card" style={{marginBottom:0}}><div className="grid2"><button className="btn secondary" onClick={()=>switchRole("worker")}>👷 Worker</button><button className="btn secondary" onClick={()=>switchRole("client")}>💼 Client</button></div></div>}</div><main className="screen"><AdBanner/><div className="hero"><div className="eyebrow">SERA TIME</div><h1>{role==="worker"?t(lang,"ስራ ይስሩ፣ ገቢ ያግኙ","Work. Earn. Grow."):t(lang,"ትክክለኛውን ባለሙያ ያግኙ","Find the right professional.")}</h1><p className="muted">{role==="worker"?t(lang,"ችሎታዎን ይምረጡ፣ እስከ 5 ስራዎች ይጠይቁ፣ አንዱ ከተመረጠ ይስሩ።","Choose your 2 skills, apply to up to 5 jobs, then work when a client selects you."):t(lang,"ስራዎን ይለጥፉ፣ እስከ 10 አመልካቾችን ይመልከቱ፣ አንዱን ይምረጡ።","Post a job, review up to 10 applicants, and select one.")}</p></div>{error&&<div className="notice error" style={{marginTop:12}}>{error}<button className="iconbtn" style={{float:"right"}} onClick={()=>setError("")}>×</button></div>}{tab==="home"&&<Home lang={lang} role={role} data={data} profile={profile} setTab={setTab}/>} {tab==="tasks"&&<WorkerTasks lang={lang} data={data} session={session} refresh={refresh}/>} {tab==="my"&&<MyTasks lang={lang} data={data} session={session} refresh={refresh}/>} {tab==="profile"&&<Profile lang={lang} profile={profile} session={session} signout={signout}/>} {tab==="notifications"&&<Notifications lang={lang} data={data} session={session} refresh={refresh}/>} {tab==="wallet"&&<Wallet lang={lang} data={data} session={session} refresh={refresh}/>} {tab==="post"&&<PostJob lang={lang} session={session} done={()=>{setTab("posts");refresh()}}/>} {tab==="posts"&&<ClientPosts lang={lang} data={data} session={session} refresh={refresh}/>} {tab==="about"&&<About lang={lang} next={()=>setTab("home")}/>} {tab==="admin"&&profile?.is_admin&&<Admin lang={lang} session={session}/>}</main><Nav role={role} tab={tab} setTab={setTab}/></div>}
-function AdBanner(){useEffect(()=>{const s=document.createElement("script");s.innerHTML="var atOptions={key:'19f1a836469c68e58860c444568a4cfc',format:'iframe',height:50,width:320,params:{}};";const s2=document.createElement("script");s2.src="https://www.highrevenueformat.com/19f1a836469c68e58860c444568a4cfc/invoke.js";s2.async=true;const el=document.getElementById("sera-ad");if(el){el.appendChild(s);el.appendChild(s2)}return()=>{if(el)el.innerHTML=""}},[]);return <div id="sera-ad" className="ad" aria-label="Advertisement"/>}
-function Home({lang,role,data,profile,setTab}:{lang:Lang;role:Role;data:any;profile:any;setTab:(x:string)=>void}){return <div><div className="sectionTitle"><div><h2>{t(lang,"የዛሬ እይታ","Today")}</h2><small className="muted">{profile?.full_name||"Sera User"}</small></div><span className="pill">🇪🇹 ETB</span></div><div className="grid2"><div className="stat"><small>{t(lang,"የሚገኝ ሂሳብ","Available")}</small><b className="money">{Number(data.wallet?.available||0).toFixed(2)} ብር</b></div><div className="stat"><small>{t(lang,"የተጠናቀቁ","Completed")}</small><b>{data.completed||0}</b></div></div><div className="grid2" style={{marginTop:10}}><button className="btn" onClick={()=>setTab(role==="worker"?"tasks":"post")}>{role==="worker"?"🔎 Find work":"＋ Post job"}</button><button className="btn secondary" onClick={()=>setTab("wallet")}>💰 Wallet</button></div><div className="card"><h3>{role==="worker"?t(lang,"የሰራተኛ ማስታወሻ","Worker guide"):t(lang,"የደንበኛ ማስታወሻ","Client guide")}</h3><p className="muted">{role==="worker"?t(lang,"በአንድ ጊዜ እስከ 5 ስራ መጠየቅ ይችላሉ። አንዱ ከተመረጠ ሌሎቹ ይዘጋሉ።","You can have up to 5 pending applications. When one is selected, the others close automatically."):t(lang,"ስራዎን በግልጽ መግለጫ፣ መስፈርቶች፣ ፋይሎች እና በጀት ይለጥፉ።","Give workers a clear brief, requirements, files and budget.")}</p></div></div>}
-function WorkerTasks({lang,data,session,refresh}:{lang:Lang;data:any;session:any;refresh:()=>void}){const tasks=data||[];return <div><div className="sectionTitle"><div><h2>{t(lang,"ችሎታዎ ያላቸው ስራዎች","Jobs for your skills")}</h2><small className="muted">{t(lang,"እስከ 10 አመልካቾች ብቻ","Up to 10 applicants per job")}</small></div></div>{tasks.map((x:any)=><TaskCard key={x.id} lang={lang} tsk={x} session={session} refresh={refresh}/>)}{!tasks.length&&<div className="card"><h3>🧭 {t(lang,"ስራ አልተገኘም","No matching jobs yet")}</h3><p className="muted">{t(lang,"የመገለጫዎን 2 ችሎታ ይፈትሹ።","Check your two selected skills in your profile.")}</p></div>}</div>}
-function TaskCard({lang,tsk,session,refresh}:{lang:Lang;tsk:any;session:any;refresh:()=>void}){const [busy,setBusy]=useState(false);const apply=async()=>{setBusy(true);try{await api(session.access_token,"apply-task",{taskId:tsk.id});refresh()}catch(e:any){alert(e.message)}finally{setBusy(false)}};return <div className="task"><div className="taskTop"><span className="pill">{tsk.category}</span><b className="money">{Number(tsk.worker_reward||0).toFixed(2)} ብር</b></div><h3>{tsk.title}</h3><p>{tsk.description}</p><div className="meta"><div><small>Deadline</small><b>{new Date(tsk.deadline_at).toLocaleString()}</b></div><div><small>Applicants</small><b>{tsk.applicant_count||0}/10</b></div></div><button className="btn full" disabled={busy} onClick={apply}>{busy?t(lang,"እየተጠየቀ…","Applying…"):t(lang,"ስራውን ጠይቅ","Apply for job")}</button></div>}
-function MyTasks({lang,data,session,refresh}:{lang:Lang;data:any;session:any;refresh:()=>void}){return <div><div className="sectionTitle"><div><h2>{t(lang,"የእኔ ስራ","My work")}</h2><small className="muted">{t(lang,"የተመረጠ ስራ ብቻ ንቁ ይሆናል","Only the selected job becomes active")}</small></div></div>{(data||[]).map((x:any)=><WorkerTask lang={lang} key={x.id} tsk={x} session={session} refresh={refresh}/>)}{!(data||[]).length&&<div className="card"><p className="muted">{t(lang,"እስካሁን የተመረጠ ስራ የለም።","No selected job yet.")}</p></div>}</div>}
-function WorkerTask({lang,tsk,session,refresh}:{lang:Lang;tsk:any;session:any;refresh:()=>void}){const [content,setContent]=useState("");const [files,setFiles]=useState<any[]>([]);const [busy,setBusy]=useState(false);const send=async()=>{setBusy(true);try{await api(session.access_token,"submit-task",{taskId:tsk.id,content,files});setContent("");setFiles([]);refresh()}catch(e:any){alert(e.message)}finally{setBusy(false)}};const add=async(e:any)=>{const f=e.target.files?.[0];if(!f)return;try{const d=await upload(session.access_token,f);setFiles([...files,d])}catch(err:any){alert(err.message)}};return <div className="task"><div className="taskTop"><span className="pill">{tsk.status}</span><b className="money">{Number(tsk.worker_reward||0).toFixed(2)} ብር</b></div><h3>{tsk.title}</h3><div className="notice">📋 <b>{t(lang,"የደንበኛ ሙሉ መመሪያ","Full client brief")}</b><p>{tsk.description}</p><p>{tsk.requirements}</p></div>{(tsk.task_files||[]).map((f:any)=><a className="fileitem" key={f.id} href={`/api/file?path=${encodeURIComponent(f.file_path)}`} target="_blank">🎞️ {f.file_name||"Client file"}</a>)}{tsk.status==="assigned"||tsk.status==="revision_requested"?<><label className="label">{t(lang,"የማብራሪያ / መልስ","Submission note")}</label><textarea className="textarea" value={content} onChange={e=>setContent(e.target.value)}/><label className="filebox"><input type="file" accept="image/*,video/*,audio/*,.pdf,.zip" onChange={add}/><span className="btn secondary">📎 {t(lang,"ፋይል ያስገቡ","Upload file")}</span></label>{files.map((f:any)=><div className="fileitem" key={f.path}>✓ {f.name}</div>)}<button className="btn full" disabled={busy||(!content.trim()&&!files.length)} onClick={send}>{busy?t(lang,"እየተላከ…","Submitting…"):t(lang,"ስራውን ላክ","Submit work")}</button></>:tsk.status==="submitted"?<div className="notice warning">⏳ {t(lang,"ደንበኛው እየገመገመ ነው።","Waiting for client review.")}</div>:tsk.status==="completed"?<div className="notice success">✓ {t(lang,"ተጠናቋል — ክፍያው ተለቋል።","Completed — payment released.")}</div>:null}</div>}
-function PostJob({lang,session,done}:{lang:Lang;session:any;done:()=>void}){const [f,setF]=useState({category:"graphic_design",title:"",description:"",requirements:"",budget:"",deadline:"24"});const [files,setFiles]=useState<any[]>([]);const [busy,setBusy]=useState(false);const add=async(e:any)=>{const file=e.target.files?.[0];if(!file)return;try{const d=await upload(session.access_token,file);setFiles([...files,d])}catch(err:any){alert(err.message)}};const save=async()=>{setBusy(true);try{await api(session.access_token,"create-task",{...f,budget:Number(f.budget),deadlineHours:Number(f.deadline),files});done()}catch(e:any){alert(e.message)}finally{setBusy(false)}};return <div><div className="sectionTitle"><div><h2>{t(lang,"ስራ ለጥፍ","Post a job")}</h2><small className="muted">{t(lang,"የተሟላ መመሪያ ይስጡ","Give workers a complete brief")}</small></div></div><div className="card"><label className="label">Skill</label><select className="select" value={f.category} onChange={e=>setF({...f,category:e.target.value})}>{SKILLS.map(x=><option key={x[0]} value={x[0]}>{x[2]} {x[1]}</option>)}</select><label className="label">Title</label><input className="input" value={f.title} onChange={e=>setF({...f,title:e.target.value})}/><label className="label">Description</label><textarea className="textarea" value={f.description} onChange={e=>setF({...f,description:e.target.value})}/><label className="label">Requirements</label><textarea className="textarea" value={f.requirements} onChange={e=>setF({...f,requirements:e.target.value})}/><div className="grid2"><div><label className="label">Budget ETB</label><input className="input" type="number" value={f.budget} onChange={e=>setF({...f,budget:e.target.value})}/></div><div><label className="label">Deadline hours</label><input className="input" type="number" value={f.deadline} onChange={e=>setF({...f,deadline:e.target.value})}/></div></div><label className="label">Reference files / videos</label><label className="filebox"><input type="file" accept="image/*,video/*,audio/*,.pdf,.zip" onChange={add}/><span className="btn secondary">🎬 {t(lang,"ፎቶ / ቪዲዮ / ፋይል ጨምር","Add photo / video / file")}</span></label>{files.map(f=><div className="fileitem" key={f.path}>✓ {f.name}</div>)}<button className="btn full" style={{marginTop:14}} disabled={busy} onClick={save}>{busy?t(lang,"እየተለጠፈ…","Posting…"):t(lang,"ስራውን ለጥፍ","Publish job")}</button></div></div>}
-function ClientPosts({lang,data,session,refresh}:{lang:Lang;data:any;session:any;refresh:()=>void}){const [open,setOpen]=useState<any>(null);const [review,setReview]=useState<any>(null);return <div><div className="sectionTitle"><div><h2>{t(lang,"የለጠፍኳቸው ስራዎች","My posted jobs")}</h2></div></div>{(data||[]).map((x:any)=><div className="task" key={x.id}><div className="taskTop"><span className="pill">{x.status}</span><b className="money">{Number(x.worker_reward||0).toFixed(2)} ብር</b></div><h3>{x.title}</h3><p>{x.description}</p><div className="meta"><div><small>Applicants</small><b>{x.applicant_count||0}/10</b></div><div><small>Deadline</small><b>{new Date(x.deadline_at).toLocaleString()}</b></div></div><div className="grid2">{x.status==="selection"&&<button className="btn" onClick={()=>setOpen(x)}>{t(lang,"አመልካቾች","Applicants")}</button>}{x.status==="submitted"&&<button className="btn blue" onClick={()=>setReview(x)}>{t(lang,"ስራውን ይገምግሙ","Review submission")}</button>}</div></div>)}{open&&<ApplicantModal lang={lang} task={open} session={session} close={()=>setOpen(null)} refresh={refresh}/>} {review&&<SubmissionReview lang={lang} task={review} session={session} close={()=>setReview(null)} refresh={refresh}/>} {!(data||[]).length&&<div className="card"><p className="muted">{t(lang,"ምንም ስራ የለም።","No jobs posted yet.")}</p></div>}</div>}
+  fd.append("accessToken", accessToken);
+  fd.append("file", file);
+  fd.append("kind", kind);
 
-function SubmissionReview({lang,task,session,close,refresh}:{lang:Lang;task:any;session:any;close:()=>void;refresh:()=>void}){const [sub,setSub]=useState<any>(null);const [reason,setReason]=useState("");const [busy,setBusy]=useState(false);useEffect(()=>{api(session.access_token,"submission",{taskId:task.id}).then(setSub).catch(e=>alert(e.message))},[session,task.id]);const decide=async(d:string)=>{if(d==="complain"&&!reason.trim())return alert("Describe the complaint first.");setBusy(true);try{await api(session.access_token,"review-submission",{taskId:task.id,decision:d,reason});close();refresh()}catch(e:any){alert(e.message)}finally{setBusy(false)}};return <div className="card"><div className="row"><h2>{t(lang,"የተላከ ስራ","Submitted work")}</h2><button className="iconbtn" onClick={close}>×</button></div>{sub?.content&&<div className="notice">{sub.content}</div>}{(sub?.submission_files||[]).map((f:any)=><SecureFile key={f.id} file={f} token={session.access_token}/>) }<label className="label">{t(lang,"ቅሬታ መግለጫ — ካለ","Complaint description — if needed")}</label><textarea className="textarea" value={reason} onChange={e=>setReason(e.target.value)} placeholder={t(lang,"ምን መሻሻል እንዳለ በግልጽ ይጻፉ።","Clearly describe what needs to be changed.")}/><div className="grid2" style={{marginTop:12}}><button className="btn" disabled={busy} onClick={()=>decide("accept")}>✓ {t(lang,"ተቀበል","Accept")}</button><button className="btn danger" disabled={busy} onClick={()=>decide("complain")}>⚠ {t(lang,"ቅሬታ / ማሻሻያ","Complain / revise")}</button></div><small className="muted" style={{display:"block",marginTop:10}}>{t(lang,"ቅሬታ እስከ 2 ጊዜ ብቻ ይፈቀዳል።","A client can request changes up to 2 times.")}</small></div>}
-function SecureFile({file,token}:{file:any;token:string}){const [url,setUrl]=useState("");useEffect(()=>{fetch(`/api/file?path=${encodeURIComponent(file.file_path)}`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>{if(r.redirected)setUrl(r.url)}).catch(()=>{})},[file.file_path,token]);useEffect(()=>{const w:any=window;const plugin=w.Capacitor?.Plugins?.SecureScreen;if(plugin?.enable)plugin.enable().catch(()=>{});return()=>{if(plugin?.disable)plugin.disable().catch(()=>{})}},[]);return <div className="filebox" style={{marginTop:10}}>{url&&file.mime_type?.startsWith("video/")?<video src={url} controls style={{width:"100%",borderRadius:16}}/>:url&&file.mime_type?.startsWith("image/")?<img src={url} alt="submission" style={{width:"100%",borderRadius:16}}/>:<a className="btn secondary" href={url||"#"} target="_blank">🔐 Open protected file</a>}<small className="muted" style={{display:"block",marginTop:8}}>Protected preview in the Android app.</small></div>}
-function ApplicantModal({lang,task,session,close,refresh}:{lang:Lang;task:any;session:any;close:()=>void;refresh:()=>void}){const [list,setList]=useState<any[]>([]);const [busy,setBusy]=useState(false);useEffect(()=>{api(session.access_token,"applicants",{taskId:task.id}).then(setList).catch(e=>alert(e.message))},[session,task.id]);const choose=async(id:string)=>{setBusy(true);try{await api(session.access_token,"choose-worker",{taskId:task.id,workerId:id});close();refresh()}catch(e:any){alert(e.message)}finally{setBusy(false)}};return <div className="card"><div className="row"><h2>{t(lang,"አመልካቾች","Applicants")}</h2><button className="iconbtn" onClick={close}>×</button></div><p className="muted">{t(lang,"ፕሮፋይል፣ ችሎታ፣ ልምድ እና portfolio ይመልከቱ።","Review profile, skills, experience and portfolio.")}</p>{list.map((a:any)=><div className="card" key={a.id}><div className="profileHero"><img className="avatar" src={a.profiles?.avatar_url||"/icon.svg"}/><div><b>{a.profiles?.full_name}</b><small className="muted" style={{display:"block"}}>{a.profiles?.email}</small></div></div><p className="muted">{a.profiles?.bio}</p><div className="applicants">{(a.profiles?.worker_skills||[]).map((s:any)=><span className="pill" key={s.skill_key}>{s.skill_key} · {s.years_experience}y</span>)}</div>{a.profiles?.portfolio_url&&<a className="btn secondary" style={{display:"inline-block",marginTop:10,textDecoration:"none"}} href={a.profiles.portfolio_url} target="_blank">🌐 Portfolio</a>}<button className="btn full" style={{marginTop:10}} disabled={busy||task.status!=="selection"} onClick={()=>choose(a.profiles.id)}>{t(lang,"ይህን ሰራተኛ ምረጥ","Select this worker")}</button></div>)}</div>}
-function Notifications({lang,data,session,refresh}:{lang:Lang;data:any;session:any;refresh:()=>void}){useEffect(()=>{api(session.access_token,"read-notifications").catch(()=>{})},[session]);return <div><div className="sectionTitle"><h2>{t(lang,"ማሳወቂያዎች","Notifications")}</h2></div>{(data||[]).map((n:any)=><div className="notice" style={{marginTop:10}} key={n.id}><b>{n.title}</b><p style={{marginTop:5}}>{n.body}</p><small className="muted">{new Date(n.created_at).toLocaleString()}</small></div>)}{!(data||[]).length&&<div className="card"><p className="muted">{t(lang,"ማሳወቂያ የለም።","No notifications yet.")}</p></div>}</div>}
-function Wallet({lang,data,session,refresh}:{lang:Lang;data:any;session:any;refresh:()=>void}){const [amount,setAmount]=useState("");const [account,setAccount]=useState("");const withdraw=async()=>{try{await api(session.access_token,"withdraw",{amount:Number(amount),method:"telebirr",accountNumber:account,accountName:""});setAmount("");refresh();alert("Withdrawal submitted")}catch(e:any){alert(e.message)}};return <div><div className="hero"><div className="eyebrow">ETB WALLET</div><h1>{Number(data.wallet?.available||0).toFixed(2)} ብር</h1><p className="muted">Available balance</p></div><div className="card"><h3>Withdraw</h3><label className="label">Amount ETB</label><input className="input" type="number" value={amount} onChange={e=>setAmount(e.target.value)}/><label className="label">Telebirr / account number</label><input className="input" value={account} onChange={e=>setAccount(e.target.value)}/><button className="btn full" style={{marginTop:12}} onClick={withdraw}>Request withdrawal</button></div><div className="sectionTitle"><h3>Recent activity</h3></div>{(data.ledger||[]).map((x:any)=><div className="notice" style={{marginTop:8}} key={x.id}><div className="row"><b>{x.description||x.type}</b><b className={Number(x.amount)>=0?"money":""}>{Number(x.amount).toFixed(2)} ETB</b></div></div>)}</div>}
-function Profile({lang,profile,session,signout}:{lang:Lang;profile:any;session:any;signout:()=>void}){const [p,setP]=useState(profile||{});const save=async()=>{try{await api(session.access_token,"update-profile",{fullName:p.full_name,bio:p.bio,portfolioUrl:p.portfolio_url,avatarUrl:p.avatar_url});alert("Profile saved") }catch(e:any){alert(e.message)}};return <div><div className="card"><div className="profileHero"><img className="profilePic" src={p.avatar_url||"/icon.svg"}/><div><h2>{p.full_name||"Sera User"}</h2><small className="muted">{p.email}</small><div className="pill" style={{marginTop:6}}>{p.face_verification_status||"pending"}</div></div></div></div><div className="card"><label className="label">Full name</label><input className="input" value={p.full_name||""} onChange={e=>setP({...p,full_name:e.target.value})}/><label className="label">Bio</label><textarea className="textarea" value={p.bio||""} onChange={e=>setP({...p,bio:e.target.value})}/><label className="label">Portfolio URL</label><input className="input" value={p.portfolio_url||""} onChange={e=>setP({...p,portfolio_url:e.target.value})}/><button className="btn full" style={{marginTop:12}} onClick={save}>Save profile</button>{p.is_admin&&<button className="btn secondary full" style={{marginTop:10}} onClick={()=>window.dispatchEvent(new CustomEvent("sera-admin"))}>Admin review</button>}<button className="btn danger full" style={{marginTop:10}} onClick={signout}>Log out</button></div></div>}
-function Admin({lang,session}:{lang:Lang;session:any}){const [list,setList]=useState<any[]>([]);const load=()=>api(session.access_token,"admin-workers").then(setList).catch(e=>alert(e.message));useEffect(()=>{void load()},[session]);const act=async(id:string,status:string)=>{try{await api(session.access_token,"admin-verify-worker",{userId:id,status});load()}catch(e:any){alert(e.message)}};return <div><div className="sectionTitle"><div><h2>🛡️ {t(lang,"የሰራተኛ ማረጋገጫ","Worker verification")}</h2><small className="muted">{t(lang,"የፊት ፎቶ እና selfie ይገምግሙ።","Review profile photo and selfie submissions.")}</small></div></div>{list.map((p:any)=><div className="card" key={p.id}><div className="profileHero"><img className="profilePic" src={p.avatar_url||"/icon.svg"}/><div><h3>{p.full_name}</h3><small className="muted">{p.email}</small></div></div><div className="grid2" style={{marginTop:12}}>{p.selfie_path&&<button className="btn secondary" onClick={async()=>{const r=await fetch(`/api/file?path=${encodeURIComponent(p.selfie_path)}`,{headers:{Authorization:`Bearer ${session.access_token}`}});if(r.redirected)window.open(r.url,"_blank");}}>🤳 Selfie</button>}{p.portfolio_url&&<a className="btn secondary" href={p.portfolio_url} target="_blank">🌐 Portfolio</a>}</div><div className="applicants" style={{marginTop:10}}>{(p.worker_skills||[]).map((s:any)=><span className="pill" key={s.skill_key}>{s.skill_key} · {s.years_experience}y</span>)}</div><div className="grid2" style={{marginTop:12}}><button className="btn" onClick={()=>act(p.id,"verified")}>✓ Verify</button><button className="btn danger" onClick={()=>act(p.id,"rejected")}>Reject</button></div></div>)}{!list.length&&<div className="card"><p className="muted">No pending workers.</p></div>}</div>}
-function Nav({role,tab,setTab}:{role:Role;tab:string;setTab:(x:string)=>void}){const items=role==="worker"?[['home','⌂','Home'],['tasks','◈','Jobs'],['my','✓','My work'],['wallet','◉','Wallet'],['profile','●','Profile']]:[['home','⌂','Home'],['post','＋','Post'],['posts','▣','My jobs'],['wallet','◉','Wallet'],['profile','●','Profile']];return <nav className="bottom">{items.map(([id,ic,label])=><button className={tab===id?"active":""} key={id} onClick={()=>setTab(id)}><span>{ic}</span>{label}</button>)}</nav>}
+  const r = await fetch("/api/upload", {
+    method: "POST",
+    body: fd,
+  });
+
+  const d = await r.json();
+
+  if (!r.ok) {
+    throw new Error(d.error || "Upload failed");
+  }
+
+  return d;
+}
+
+export default function App() {
+  const [lang, setLangState] = useState<Lang | null>(null);
+
+  const setLang = (v: Lang) => {
+    setLangState(v);
+
+    try {
+      localStorage.setItem("sera_lang", v);
+    } catch {}
+  };
+
+  const [stage, setStage] = useState<
+    | "welcome"
+    | "auth"
+    | "about"
+    | "role"
+    | "worker-onboard"
+    | "app"
+  >("welcome");
+
+  const [mode, setMode] =
+    useState<"login" | "signup">("signup");
+
+  const [role, setRole] =
+    useState<Role>("worker");
+
+  const [session, setSession] =
+    useState<any>(null);
+
+  const [profile, setProfile] =
+    useState<any>(null);
+
+  const [tab, setTab] =
+    useState("home");
+
+  const [data, setData] =
+    useState<any>({});
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [auth, setAuth] = useState({
+    email: "",
+    password: "",
+    name: "",
+  });
+
+  const [worker, setWorker] = useState({
+    skills: [] as string[],
+    years: {} as Record<string, number>,
+    fullName: "",
+    bio: "",
+    portfolioUrl: "",
+    avatarUrl: "",
+    avatarPath: "",
+    selfieUrl: "",
+    selfiePath: "",
+  });
+
+  const [refresh, setRefresh] =
+    useState(0);
+
+  const msg = (
+    a: string,
+    b: string
+  ) => t(lang || "en", a, b);
+
+  /*
+   * INITIAL SESSION
+   */
+  useEffect(() => {
+    try {
+      const l =
+        localStorage.getItem("sera_lang");
+
+      if (l === "am" || l === "en") {
+        setLangState(l);
+      }
+    } catch {}
+
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!data.session) return;
+
+        setSession(data.session);
+
+        try {
+          const p = await api(
+            data.session.access_token,
+            "me"
+          );
+
+          setProfile(p);
+
+          setRole(
+            p.active_role || "worker"
+          );
+
+          if (
+            p.face_verification_status ||
+            p.worker_onboarded
+          ) {
+            setStage("app");
+          } else if (
+            p.active_role === "worker" &&
+            (!p.full_name || !p.worker_onboarded)
+          ) {
+            setStage("worker-onboard");
+          } else {
+            setStage("app");
+          }
+        } catch {
+          setStage("role");
+        }
+      });
+
+    const {
+      data: sub,
+    } = supabase.auth.onAuthStateChange(
+      (_event, s) => {
+        setSession(s);
+
+        if (s) {
+          setStage("role");
+        }
+      }
+    );
+
+    return () =>
+      sub.subscription.unsubscribe();
+  }, []);
+
+  /*
+   * LOAD APP DATA
+   */
+  useEffect(() => {
+    if (!session || stage !== "app") {
+      return;
+    }
+
+    const action =
+      tab === "home"
+        ? "dashboard"
+        : tab === "tasks"
+        ? "worker-tasks"
+        : tab === "my"
+        ? "my-tasks"
+        : tab === "notifications"
+        ? "notifications"
+        : tab === "wallet"
+        ? "wallet"
+        : tab === "profile"
+        ? "profile"
+        : tab === "posts"
+        ? "client-posts"
+        : "dashboard";
+
+    api(
+      session.access_token,
+      action
+    )
+      .then(setData)
+      .catch((e) =>
+        setError(e.message)
+      );
+  }, [
+    session,
+    stage,
+    tab,
+    refresh,
+  ]);
+
+  /*
+   * LOGIN / SIGNUP
+   */
+  const doAuth = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      if (mode === "signup") {
+        const {
+          data,
+          error,
+        } = await supabase.auth.signUp({
+          email: auth.email,
+          password: auth.password,
+          options: {
+            data: {
+              full_name: auth.name,
+            },
+          },
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        if (!data.session) {
+          setError(
+            msg(
+              "ሂሳብዎ ተፈጥሯል። ኢሜይልዎን ያረጋግጡ።",
+              "Account created. Check your email to confirm your account."
+            )
+          );
+
+          return;
+        }
+
+        setSession(data.session);
+        setStage("role");
+      } else {
+        const {
+          data,
+          error,
+        } =
+          await supabase.auth.signInWithPassword(
+            {
+              email: auth.email,
+              password: auth.password,
+            }
+          );
+
+        if (error) {
+          throw error;
+        }
+
+        setSession(data.session);
+        setStage("role");
+      }
+    } catch (e: any) {
+      setError(
+        e?.message || "Authentication failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * FIXED ROLE SELECTION
+   *
+   * This is the important fix.
+   * We get the newest Supabase session instead
+   * of relying only on React state.
+   */
+  const chooseRole = async (r: Role) => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const {
+        data,
+        error: sessionError,
+      } =
+        await supabase.auth.getSession();
+
+      if (sessionError) {
+        throw sessionError;
+      }
+
+      const currentSession =
+        data.session;
+
+      if (!currentSession) {
+        setError(
+          msg(
+            "እባክዎ መጀመሪያ ይግቡ።",
+            "Please log in first."
+          )
+        );
+
+        setStage("auth");
+        return;
+      }
+
+      setSession(currentSession);
+      setRole(r);
+
+      await api(
+        currentSession.access_token,
+        "set-role",
+        {
+          role: r,
+        }
+      );
+
+      if (r === "worker") {
+        setStage("worker-onboard");
+      } else {
+        setStage("app");
+        setTab("home");
+      }
+    } catch (e: any) {
+      setError(
+        e?.message ||
+          "Could not select role."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * SAVE WORKER PROFILE
+   */
+  const saveWorker = async () => {
+    if (worker.skills.length !== 2) {
+      setError(
+        msg(
+          "እባክዎ 2 ችሎታ ብቻ ይምረጡ።",
+          "Please choose exactly 2 skills."
+        )
+      );
+      return;
+    }
+
+    if (
+      !worker.fullName.trim() ||
+      !worker.avatarUrl ||
+      !worker.selfieUrl
+    ) {
+      setError(
+        msg(
+          "ሙሉ ስም፣ ፕሮፋይል ፎቶ እና ሴልፊ ያስፈልጋል።",
+          "Full name, profile photo and selfie are required."
+        )
+      );
+      return;
+    }
+
+    if (!session) {
+      setError(
+        "Your session expired. Please log in again."
+      );
+      setStage("auth");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await api(
+        session.access_token,
+        "update-profile",
+        {
+          fullName:
+            worker.fullName,
+          bio: worker.bio,
+          portfolioUrl:
+            worker.portfolioUrl,
+          avatarUrl:
+            worker.avatarUrl,
+          skills:
+            worker.skills.map((s) => ({
+              skill: s,
+              years: Number(
+                worker.years[s] || 0
+              ),
+            })),
+        }
+      );
+
+      await api(
+        session.access_token,
+        "update-profile",
+        {
+          selfieUrl: "",
+          selfiePath:
+            worker.selfiePath,
+          faceVerificationStatus:
+            "pending",
+          workerOnboarded: true,
+        }
+      );
+
+      const p = await api(
+        session.access_token,
+        "profile"
+      );
+
+      setProfile(p);
+      setStage("app");
+      setTab("home");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /*
+   * SIGN OUT
+   */
+  const signout = async () => {
+    await supabase.auth.signOut();
+    location.reload();
+  };
+
+  /*
+   * LANGUAGE SCREEN
+   */
+  if (!lang) {
+    return (
+      <div className="center">
+        <div
+          className="welcome card"
+          style={{
+            width: "min(480px,92%)",
+          }}
+        >
+          <img src="/welcome.svg" />
+
+          <div className="brand">
+            <div className="logo">
+              S
+            </div>
+
+            <div>
+              <b>Sera Time</b>
+              <small>
+                Work • Earn • Grow
+              </small>
+            </div>
+          </div>
+
+          <h2>
+            Choose your language
+          </h2>
+
+          <p className="muted">
+            ቋንቋዎን ይምረጡ
+          </p>
+
+          <div className="grid2">
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                setLang("am")
+              }
+            >
+              🇪🇹 አማርኛ
+            </button>
+
+            <button
+              type="button"
+              className="btn blue"
+              onClick={() =>
+                setLang("en")
+              }
+            >
+              🇬🇧 English
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === "welcome") {
+    return (
+      <Welcome
+        lang={lang}
+        next={() =>
+          setStage("about")
+        }
+      />
+    );
+  }
+
+  if (stage === "about") {
+    return (
+      <About
+        lang={lang}
+        next={() =>
+          setStage("auth")
+        }
+      />
+    );
+  }
+
+  if (stage === "auth") {
+    return (
+      <Auth
+        lang={lang}
+        mode={mode}
+        setMode={setMode}
+        auth={auth}
+        setAuth={setAuth}
+        loading={loading}
+        error={error}
+        submit={doAuth}
+      />
+    );
+  }
+
+  if (stage === "role") {
+    return (
+      <RolePick
+        lang={lang}
+        role={role}
+        choose={chooseRole}
+        loading={loading}
+        error={error}
+      />
+    );
+  }
+
+  if (stage === "worker-onboard") {
+    return (
+      <WorkerOnboard
+        lang={lang}
+        worker={worker}
+        setWorker={setWorker}
+        loading={loading}
+        error={error}
+        session={session}
+        save={saveWorker}
+      />
+    );
+  }
+
+  return (
+    <Main
+      lang={lang}
+      role={role}
+      setRole={setRole}
+      tab={tab}
+      setTab={setTab}
+      data={data}
+      profile={profile}
+      session={session}
+      refresh={() =>
+        setRefresh((x) => x + 1)
+      }
+      error={error}
+      setError={setError}
+      signout={signout}
+    />
+  );
+}
+
+/* =========================================================
+   WELCOME
+========================================================= */
+
+function Welcome({
+  lang,
+  next,
+}: {
+  lang: Lang;
+  next: () => void;
+}) {
+  return (
+    <div className="center">
+      <div
+        className="welcome"
+        style={{
+          width: "min(560px,100%)",
+        }}
+      >
+        <img src="/welcome.svg" />
+
+        <div className="brand">
+          <div className="logo">
+            S
+          </div>
+
+          <div>
+            <b>Sera Time</b>
+            <small>
+              {t(
+                lang,
+                "ስራ • ገቢ • እድል",
+                "Work • Earn • Grow"
+              )}
+            </small>
+          </div>
+        </div>
+
+        <h1>
+          {t(
+            lang,
+            "እንኳን ወደ Sera Time በደህና መጡ",
+            "Welcome to Sera Time"
+          )}
+        </h1>
+
+        <p className="muted">
+          {t(
+            lang,
+            "የኢትዮጵያ ዲጂታል ስራ ገበያ። ችሎታዎን ይጠቀሙ፣ ስራ ይስሩ ወይም ባለሙያ ይፈልጉ።",
+            "Ethiopia-focused digital work marketplace. Work with your skills or find the right professional."
+          )}
+        </p>
+
+        <button
+          type="button"
+          className="btn full"
+          onClick={next}
+        >
+          {t(
+            lang,
+            "መጀመሪያ እንጀምር →",
+            "Get started →"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   ABOUT
+========================================================= */
+
+function About({
+  lang,
+  next,
+}: {
+  lang: Lang;
+  next: () => void;
+}) {
+  const items =
+    lang === "am"
+      ? [
+          "በችሎታዎ ስራ ያግኙ።",
+          "እስከ 10 ሰራተኞች ስራን መጠየቅ ይችላሉ።",
+          "ደንበኛው ከአመልካቾች አንዱን ይመርጣል።",
+          "ስራው ሲፀድቅ ክፍያው ወደ ዋሌት ይገባል።",
+          "ማሳወቂያዎች በእያንዳንዱ እርምጃ ይመጣሉ.",
+        ]
+      : [
+          "Find work that matches your skills.",
+          "Each job accepts up to 10 worker applications.",
+          "The client reviews portfolios and selects one worker.",
+          "Payment is released to the worker after approval.",
+          "Notifications keep both sides updated.",
+        ];
+
+  return (
+    <div className="center">
+      <div
+        className="screen"
+        style={{
+          width: "min(560px,100%)",
+        }}
+      >
+        <div className="brand">
+          <div className="logo">
+            S
+          </div>
+
+          <div>
+            <b>Sera Time</b>
+            <small>
+              {t(
+                lang,
+                "ስለ መድረኩ",
+                "About the platform"
+              )}
+            </small>
+          </div>
+        </div>
+
+        <div className="card">
+          <span className="pill">
+            ✦{" "}
+            {t(
+              lang,
+              "እንዴት ይሰራል",
+              "How it works"
+            )}
+          </span>
+
+          <h1>
+            {t(
+              lang,
+              "Sera Time ምንድነው?",
+              "What is Sera Time?"
+            )}
+          </h1>
+
+          {items.map((x, i) => (
+            <div
+              className="notice"
+              style={{
+                marginTop: 10,
+              }}
+              key={i}
+            >
+              {i + 1}. {x}
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="btn full"
+          onClick={next}
+        >
+          {t(
+            lang,
+            "ግባ / ተመዝገብ →",
+            "Login / Sign up →"
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   AUTH
+========================================================= */
+
+function Auth({
+  lang,
+  mode,
+  setMode,
+  auth,
+  setAuth,
+  loading,
+  error,
+  submit,
+}: {
+  lang: Lang;
+  mode: "login" | "signup";
+  setMode: (x: any) => void;
+  auth: any;
+  setAuth: (x: any) => void;
+  loading: boolean;
+  error: string;
+  submit: () => void;
+}) {
+  return (
+    <div className="center">
+      <div
+        className="screen"
+        style={{
+          width: "min(500px,100%)",
+        }}
+      >
+        <div className="brand">
+          <div className="logo">
+            S
+          </div>
+
+          <div>
+            <b>Sera Time</b>
+            <small>
+              {t(
+                lang,
+                "የመለያ መግቢያ",
+                "Account access"
+              )}
+            </small>
+          </div>
+        </div>
+
+        <div className="tabs">
+          <button
+            type="button"
+            className={`btn ${
+              mode === "signup"
+                ? ""
+                : "secondary"
+            }`}
+            onClick={() =>
+              setMode("signup")
+            }
+          >
+            {t(
+              lang,
+              "መመዝገብ",
+              "Sign up"
+            )}
+          </button>
+
+          <button
+            type="button"
+            className={`btn ${
+              mode === "login"
+                ? ""
+                : "secondary"
+            }`}
+            onClick={() =>
+              setMode("login")
+            }
+          >
+            {t(
+              lang,
+              "መግባት",
+              "Log in"
+            )}
+          </button>
+        </div>
+
+        <div className="card">
+          <h2>
+            {mode === "signup"
+              ? t(
+                  lang,
+                  "አዲስ መለያ",
+                  "Create your account"
+                )
+              : t(
+                  lang,
+                  "እንኳን ደህና መጡ",
+                  "Welcome back"
+                )}
+          </h2>
+
+          {mode === "signup" && (
+            <>
+              <label className="label">
+                {t(
+                  lang,
+                  "ሙሉ ስም",
+                  "Full name"
+                )}
+              </label>
+
+              <input
+                className="input"
+                value={auth.name}
+                onChange={(e) =>
+                  setAuth({
+                    ...auth,
+                    name: e.target.value,
+                  })
+                }
+              />
+            </>
+          )}
+
+          <label className="label">
+            Email
+          </label>
+
+          <input
+            className="input"
+            type="email"
+            value={auth.email}
+            onChange={(e) =>
+              setAuth({
+                ...auth,
+                email: e.target.value,
+              })
+            }
+          />
+
+          <label className="label">
+            Password
+          </label>
+
+          <input
+            className="input"
+            type="password"
+            value={auth.password}
+            onChange={(e) =>
+              setAuth({
+                ...auth,
+                password: e.target.value,
+              })
+            }
+          />
+
+          {error && (
+            <div
+              className="notice error"
+              style={{
+                marginTop: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="btn full"
+            style={{
+              marginTop: 14,
+            }}
+            disabled={loading}
+            onClick={submit}
+          >
+            {loading
+              ? t(
+                  lang,
+                  "እየተጫነ…",
+                  "Loading…"
+                )
+              : mode === "signup"
+              ? t(
+                  lang,
+                  "መለያ ፍጠር",
+                  "Create account"
+                )
+              : t(
+                  lang,
+                  "ግባ",
+                  "Log in"
+                )}
+          </button>
+        </div>
+
+        <p
+          className="muted"
+          style={{
+            fontSize: 12,
+          }}
+        >
+          Sera Time will never ask you
+          for a password belonging to
+          another website or portfolio
+          service.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   ROLE PICK — FIXED
+========================================================= */
+
+function RolePick({
+  lang,
+  role,
+  choose,
+  loading,
+  error,
+}: {
+  lang: Lang;
+  role: Role;
+  choose: (r: Role) => void;
+  loading: boolean;
+  error: string;
+}) {
+  return (
+    <div className="center">
+      <div
+        className="screen"
+        style={{
+          width: "min(560px,100%)",
+        }}
+      >
+        <div className="card">
+          <span className="pill">
+            1 / 2
+          </span>
+
+          <h1>
+            {t(
+              lang,
+              "ሚናዎን ይምረጡ",
+              "Choose your role"
+            )}
+          </h1>
+
+          <p className="muted">
+            {t(
+              lang,
+              "በኋላ ሚናዎን መቀየር ይችላሉ።",
+              "You can switch roles later."
+            )}
+          </p>
+
+          {error && (
+            <div
+              className="notice error"
+              style={{
+                marginBottom: 12,
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          <div className="grid2">
+            <button
+              type="button"
+              className={`choice ${
+                role === "worker"
+                  ? "selected"
+                  : ""
+              }`}
+              disabled={loading}
+              onClick={() =>
+                choose("worker")
+              }
+            >
+              <div className="icon">
+                👷
+              </div>
+
+              <h3>
+                {t(
+                  lang,
+                  "ሰራተኛ",
+                  "Worker"
+                )}
+              </h3>
+
+              <p className="muted">
+                {t(
+                  lang,
+                  "ችሎታዎን በመጠቀም ስራ ይስሩ።",
+                  "Apply for jobs using your skills."
+                )}
+              </p>
+
+              {loading &&
+                role === "worker" && (
+                  <small>
+                    Loading...
+                  </small>
+                )}
+            </button>
+
+            <button
+              type="button"
+              className={`choice ${
+                role === "client"
+                  ? "selected"
+                  : ""
+              }`}
+              disabled={loading}
+              onClick={() =>
+                choose("client")
+              }
+            >
+              <div className="icon">
+                💼
+              </div>
+
+              <h3>
+                {t(
+                  lang,
+                  "ደንበኛ",
+                  "Client"
+                )}
+              </h3>
+
+              <p className="muted">
+                {t(
+                  lang,
+                  "ስራ ይለጥፉ እና ባለሙያ ይምረጡ።",
+                  "Post jobs and select a professional."
+                )}
+              </p>
+
+              {loading &&
+                role === "client" && (
+                  <small>
+                    Loading...
+                  </small>
+                )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   WORKER ONBOARDING
+========================================================= */
+
+function WorkerOnboard({
+  lang,
+  worker,
+  setWorker,
+  loading,
+  error,
+  session,
+  save,
+}: {
+  lang: Lang;
+  worker: any;
+  setWorker: (x: any) => void;
+  loading: boolean;
+  error: string;
+  session: any;
+  save: () => void;
+}) {
+  const toggle = (k: string) => {
+    const has =
+      worker.skills.includes(k);
+
+    let skills;
+
+    if (has) {
+      skills =
+        worker.skills.filter(
+          (x: string) => x !== k
+        );
+    } else {
+      skills =
+        worker.skills.length < 2
+          ? [...worker.skills, k]
+          : worker.skills;
+    }
+
+    setWorker({
+      ...worker,
+      skills,
+    });
+  };
+
+  const file = async (
+    e: any,
+    kind: string
+  ) => {
+    const f =
+      e.target.files?.[0];
+
+    if (!f) return;
+
+    if (!session) {
+      alert(
+        "Your session expired. Please log in again."
+      );
+      return;
+    }
+
+    try {
+      const d = await upload(
+        session.access_token,
+        f,
+        kind
+      );
+
+      if (kind === "avatar") {
+        setWorker({
+          ...worker,
+          avatarUrl: d.url,
+          avatarPath: d.path,
+        });
+      } else {
+        setWorker({
+          ...worker,
+          selfieUrl: d.url,
+          selfiePath: d.path,
+        });
+      }
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="screen">
+      <div className="brand">
+        <div className="logo">
+          S
+        </div>
+
+        <div>
+          <b>Sera Time</b>
+          <small>
+            {t(
+              lang,
+              "የሰራተኛ መመዝገቢያ",
+              "Worker profile setup"
+            )}
+          </small>
+        </div>
+      </div>
+
+      <div className="card">
+        <span className="pill">
+          2 / 2
+        </span>
+
+        <h1>
+          {t(
+            lang,
+            "የሰራተኛ መገለጫዎን ያዘጋጁ",
+            "Build your worker profile"
+          )}
+        </h1>
+
+        <p className="muted">
+          {t(
+            lang,
+            "ይህ መረጃ ደንበኞች እርስዎን እንዲመርጡ ይረዳል።",
+            "Clients use this information to choose the right worker."
+          )}
+        </p>
+
+        <label className="label">
+          {t(
+            lang,
+            "ችሎታዎ — 2 ብቻ",
+            "Skills — exactly 2"
+          )}
+        </label>
+
+        <div className="grid2">
+          {SKILLS.map(
+            ([k, n, ic]) => (
+              <button
+                type="button"
+                key={k}
+                className={`skill ${
+                  worker.skills.includes(
+                    k
+                  )
+                    ? "selected"
+                    : ""
+                }`}
+                onClick={() =>
+                  toggle(k)
+                }
+              >
+                {ic} {n}
+
+                {worker.skills.includes(
+                  k
+                ) && (
+                  <small>
+                    ✓ selected
+                  </small>
+                )}
+              </button>
+            )
+          )}
+        </div>
+
+        {worker.skills.map(
+          (k: string) => (
+            <div key={k}>
+              <label className="label">
+                {
+                  SKILLS.find(
+                    (x) => x[0] === k
+                  )?.[1]
+                }{" "}
+                —{" "}
+                {t(
+                  lang,
+                  "የልምድ ዓመታት",
+                  "years of experience"
+                )}
+              </label>
+
+              <input
+                className="input"
+                type="number"
+                min="0"
+                max="50"
+                value={
+                  worker.years[k] || 0
+                }
+                onChange={(e) =>
+                  setWorker({
+                    ...worker,
+                    years: {
+                      ...worker.years,
+                      [k]: Number(
+                        e.target.value
+                      ),
+                    },
+                  })
+                }
+              />
+            </div>
+          )
+        )}
+
+        <label className="label">
+          {t(
+            lang,
+            "ሙሉ ስም",
+            "Full name"
+          )}
+        </label>
+
+        <input
+          className="input"
+          value={worker.fullName}
+          onChange={(e) =>
+            setWorker({
+              ...worker,
+              fullName:
+                e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          {t(
+            lang,
+            "የስራ መግለጫ",
+            "Professional description"
+          )}
+        </label>
+
+        <textarea
+          className="textarea"
+          value={worker.bio}
+          onChange={(e) =>
+            setWorker({
+              ...worker,
+              bio: e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          Portfolio link (optional)
+        </label>
+
+        <input
+          className="input"
+          placeholder="https://…"
+          value={worker.portfolioUrl}
+          onChange={(e) =>
+            setWorker({
+              ...worker,
+              portfolioUrl:
+                e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          {t(
+            lang,
+            "የፊት ፎቶ",
+            "Profile photo"
+          )}
+        </label>
+
+        <div className="filebox">
+          <input
+            id="avatar"
+            type="file"
+            accept="image/*"
+            capture="user"
+            onChange={(e) =>
+              file(e, "avatar")
+            }
+          />
+
+          <label
+            htmlFor="avatar"
+            className="btn secondary"
+          >
+            📷{" "}
+            {worker.avatarUrl
+              ? t(
+                  lang,
+                  "ፎቶ ተጭኗል",
+                  "Photo uploaded"
+                )
+              : t(
+                  lang,
+                  "ፎቶ ያንሱ / ይጫኑ",
+                  "Take / upload photo"
+                )}
+          </label>
+
+          {worker.avatarUrl && (
+            <img
+              className="profilePic"
+              src={worker.avatarUrl}
+              alt="profile"
+            />
+          )}
+        </div>
+
+        <label className="label">
+          {t(
+            lang,
+            "የፊት ማረጋገጫ selfie",
+            "Identity selfie"
+          )}
+        </label>
+
+        <div className="filebox">
+          <input
+            id="selfie"
+            type="file"
+            accept="image/*"
+            capture="user"
+            onChange={(e) =>
+              file(e, "selfie")
+            }
+          />
+
+          <label
+            htmlFor="selfie"
+            className="btn secondary"
+          >
+            🤳{" "}
+            {worker.selfieUrl
+              ? t(
+                  lang,
+                  "Selfie ተልኳል",
+                  "Selfie uploaded"
+                )
+              : t(
+                  lang,
+                  "Selfie ያንሱ",
+                  "Take selfie"
+                )}
+          </label>
+
+          <small
+            className="muted"
+            style={{
+              display: "block",
+              marginTop: 10,
+            }}
+          >
+            {t(
+              lang,
+              "ማረጋገጫው በሰራተኛ ግምገማ ሊጠናቀቅ ይችላል።",
+              "Identity verification may be reviewed before approval."
+            )}
+          </small>
+        </div>
+
+        {error && (
+          <div className="notice error">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="btn full"
+          disabled={loading}
+          onClick={save}
+        >
+          {loading
+            ? t(
+                lang,
+                "እየተቀመጠ…",
+                "Saving…"
+              )
+            : t(
+                lang,
+                "መገለጫውን አስቀምጥ →",
+                "Save profile →"
+              )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   MAIN APP
+========================================================= */
+
+function Main({
+  lang,
+  role,
+  setRole,
+  tab,
+  setTab,
+  data,
+  profile,
+  session,
+  refresh,
+  error,
+  setError,
+  signout,
+}: {
+  lang: Lang;
+  role: Role;
+  setRole: (r: Role) => void;
+  tab: string;
+  setTab: (x: string) => void;
+  data: any;
+  profile: any;
+  session: any;
+  refresh: () => void;
+  error: string;
+  setError: (x: string) => void;
+  signout: () => void;
+}) {
+  const [showRole, setShowRole] =
+    useState(false);
+
+  const switchRole = async (
+    r: Role
+  ) => {
+    try {
+      await api(
+        session.access_token,
+        "set-role",
+        { role: r }
+      );
+
+      setRole(r);
+      setShowRole(false);
+      setTab("home");
+      refresh();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  useEffect(() => {
+    const h = () =>
+      setTab("admin");
+
+    window.addEventListener(
+      "sera-admin",
+      h
+    );
+
+    return () =>
+      window.removeEventListener(
+        "sera-admin",
+        h
+      );
+  }, [setTab]);
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <div className="topbar-row">
+          <div
+            className="brand"
+            style={{
+              margin: 0,
+            }}
+          >
+            <div
+              className="logo"
+              style={{
+                width: 42,
+                height: 42,
+                fontSize: 19,
+              }}
+            >
+              S
+            </div>
+
+            <div>
+              <b>Sera Time</b>
+              <small>
+                {role === "worker"
+                  ? "Worker"
+                  : "Client"}
+              </small>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 7,
+            }}
+          >
+            <button
+              type="button"
+              className="iconbtn"
+              onClick={() =>
+                setTab(
+                  "notifications"
+                )
+              }
+            >
+              🔔
+            </button>
+
+            <button
+              type="button"
+              className="iconbtn"
+              onClick={() =>
+                setShowRole(
+                  !showRole
+                )
+              }
+            >
+              ⇄
+            </button>
+          </div>
+        </div>
+
+        {showRole && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 0,
+            }}
+          >
+            <div className="grid2">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  switchRole(
+                    "worker"
+                  )
+                }
+              >
+                👷 Worker
+              </button>
+
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={() =>
+                  switchRole(
+                    "client"
+                  )
+                }
+              >
+                💼 Client
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <main className="screen">
+        <AdBanner />
+
+        <div className="hero">
+          <div className="eyebrow">
+            SERA TIME
+          </div>
+
+          <h1>
+            {role === "worker"
+              ? t(
+                  lang,
+                  "ስራ ይስሩ፣ ገቢ ያግኙ",
+                  "Work. Earn. Grow."
+                )
+              : t(
+                  lang,
+                  "ትክክለኛውን ባለሙያ ያግኙ",
+                  "Find the right professional."
+                )}
+          </h1>
+
+          <p className="muted">
+            {role === "worker"
+              ? t(
+                  lang,
+                  "ችሎታዎን ይምረጡ፣ እስከ 5 ስራዎች ይጠይቁ፣ አንዱ ከተመረጠ ይስሩ።",
+                  "Choose your 2 skills, apply to up to 5 jobs, then work when a client selects you."
+                )
+              : t(
+                  lang,
+                  "ስራዎን ይለጥፉ፣ እስከ 10 አመልካቾችን ይመልከቱ፣ አንዱን ይምረጡ።",
+                  "Post a job, review up to 10 applicants, and select one."
+                )}
+          </p>
+        </div>
+
+        {error && (
+          <div
+            className="notice error"
+            style={{
+              marginTop: 12,
+            }}
+          >
+            {error}
+
+            <button
+              type="button"
+              className="iconbtn"
+              style={{
+                float: "right",
+              }}
+              onClick={() =>
+                setError("")
+              }
+            >
+              ×
+            </button>
+          </div>
+        )}
+
+        {tab === "home" && (
+          <Home
+            lang={lang}
+            role={role}
+            data={data}
+            profile={profile}
+            setTab={setTab}
+          />
+        )}
+
+        {tab === "tasks" && (
+          <WorkerTasks
+            lang={lang}
+            data={data}
+            session={session}
+            refresh={refresh}
+          />
+        )}
+
+        {tab === "my" && (
+          <MyTasks
+            lang={lang}
+            data={data}
+            session={session}
+            refresh={refresh}
+          />
+        )}
+
+        {tab === "profile" && (
+          <Profile
+            lang={lang}
+            profile={profile}
+            session={session}
+            signout={signout}
+          />
+        )}
+
+        {tab === "notifications" && (
+          <Notifications
+            lang={lang}
+            data={data}
+            session={session}
+            refresh={refresh}
+          />
+        )}
+
+        {tab === "wallet" && (
+          <Wallet
+            lang={lang}
+            data={data}
+            session={session}
+            refresh={refresh}
+          />
+        )}
+
+        {tab === "post" && (
+          <PostJob
+            lang={lang}
+            session={session}
+            done={() => {
+              setTab("posts");
+              refresh();
+            }}
+          />
+        )}
+
+        {tab === "posts" && (
+          <ClientPosts
+            lang={lang}
+            data={data}
+            session={session}
+            refresh={refresh}
+          />
+        )}
+
+        {tab === "about" && (
+          <About
+            lang={lang}
+            next={() =>
+              setTab("home")
+            }
+          />
+        )}
+
+        {tab === "admin" &&
+          profile?.is_admin && (
+            <Admin
+              lang={lang}
+              session={session}
+            />
+          )}
+      </main>
+
+      <Nav
+        role={role}
+        tab={tab}
+        setTab={setTab}
+      />
+    </div>
+  );
+}
+
+/* =========================================================
+   AD
+========================================================= */
+
+function AdBanner() {
+  useEffect(() => {
+    const s =
+      document.createElement(
+        "script"
+      );
+
+    s.innerHTML =
+      "var atOptions={key:'19f1a836469c68e58860c444568a4cfc',format:'iframe',height:50,width:320,params:{}};";
+
+    const s2 =
+      document.createElement(
+        "script"
+      );
+
+    s2.src =
+      "https://www.highrevenueformat.com/19f1a836469c68e58860c444568a4cfc/invoke.js";
+
+    s2.async = true;
+
+    const el =
+      document.getElementById(
+        "sera-ad"
+      );
+
+    if (el) {
+      el.appendChild(s);
+      el.appendChild(s2);
+    }
+
+    return () => {
+      if (el) {
+        el.innerHTML = "";
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      id="sera-ad"
+      className="ad"
+      aria-label="Advertisement"
+    />
+  );
+}
+
+/* =========================================================
+   HOME
+========================================================= */
+
+function Home({
+  lang,
+  role,
+  data,
+  profile,
+  setTab,
+}: {
+  lang: Lang;
+  role: Role;
+  data: any;
+  profile: any;
+  setTab: (x: string) => void;
+}) {
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            {t(
+              lang,
+              "የዛሬ እይታ",
+              "Today"
+            )}
+          </h2>
+
+          <small className="muted">
+            {profile?.full_name ||
+              "Sera User"}
+          </small>
+        </div>
+
+        <span className="pill">
+          🇪🇹 ETB
+        </span>
+      </div>
+
+      <div className="grid2">
+        <div className="stat">
+          <small>
+            {t(
+              lang,
+              "የሚገኝ ሂሳብ",
+              "Available"
+            )}
+          </small>
+
+          <b className="money">
+            {Number(
+              data.wallet?.available ||
+                0
+            ).toFixed(2)}{" "}
+            ብር
+          </b>
+        </div>
+
+        <div className="stat">
+          <small>
+            {t(
+              lang,
+              "የተጠናቀቁ",
+              "Completed"
+            )}
+          </small>
+
+          <b>
+            {data.completed || 0}
+          </b>
+        </div>
+      </div>
+
+      <div
+        className="grid2"
+        style={{
+          marginTop: 10,
+        }}
+      >
+        <button
+          type="button"
+          className="btn"
+          onClick={() =>
+            setTab(
+              role === "worker"
+                ? "tasks"
+                : "post"
+            )
+          }
+        >
+          {role === "worker"
+            ? "🔎 Find work"
+            : "＋ Post job"}
+        </button>
+
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() =>
+            setTab("wallet")
+          }
+        >
+          💰 Wallet
+        </button>
+      </div>
+
+      <div className="card">
+        <h3>
+          {role === "worker"
+            ? t(
+                lang,
+                "የሰራተኛ ማስታወሻ",
+                "Worker guide"
+              )
+            : t(
+                lang,
+                "የደንበኛ ማስታወሻ",
+                "Client guide"
+              )}
+        </h3>
+
+        <p className="muted">
+          {role === "worker"
+            ? t(
+                lang,
+                "በአንድ ጊዜ እስከ 5 ስራ መጠየቅ ይችላሉ። አንዱ ከተመረጠ ሌሎቹ ይዘጋሉ።",
+                "You can have up to 5 pending applications. When one is selected, the others close automatically."
+              )
+            : t(
+                lang,
+                "ስራዎን በግልጽ መግለጫ፣ መስፈርቶች፣ ፋይሎች እና በጀት ይለጥፉ።",
+                "Give workers a clear brief, requirements, files and budget."
+              )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   WORKER TASKS
+========================================================= */
+
+function WorkerTasks({
+  lang,
+  data,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  data: any;
+  session: any;
+  refresh: () => void;
+}) {
+  const tasks = data || [];
+
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            {t(
+              lang,
+              "ችሎታዎ ያላቸው ስራዎች",
+              "Jobs for your skills"
+            )}
+          </h2>
+
+          <small className="muted">
+            {t(
+              lang,
+              "እስከ 10 አመልካቾች ብቻ",
+              "Up to 10 applicants per job"
+            )}
+          </small>
+        </div>
+      </div>
+
+      {tasks.map(
+        (x: any) => (
+          <TaskCard
+            key={x.id}
+            lang={lang}
+            tsk={x}
+            session={session}
+            refresh={refresh}
+          />
+        )
+      )}
+
+      {!tasks.length && (
+        <div className="card">
+          <h3>
+            🧭{" "}
+            {t(
+              lang,
+              "ስራ አልተገኘም",
+              "No matching jobs yet"
+            )}
+          </h3>
+
+          <p className="muted">
+            {t(
+              lang,
+              "የመገለጫዎን 2 ችሎታ ይፈትሹ።",
+              "Check your two selected skills in your profile."
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskCard({
+  lang,
+  tsk,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  tsk: any;
+  session: any;
+  refresh: () => void;
+}) {
+  const [busy, setBusy] =
+    useState(false);
+
+  const apply = async () => {
+    setBusy(true);
+
+    try {
+      await api(
+        session.access_token,
+        "apply-task",
+        {
+          taskId: tsk.id,
+        }
+      );
+
+      refresh();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="task">
+      <div className="taskTop">
+        <span className="pill">
+          {tsk.category}
+        </span>
+
+        <b className="money">
+          {Number(
+            tsk.worker_reward || 0
+          ).toFixed(2)}{" "}
+          ብር
+        </b>
+      </div>
+
+      <h3>{tsk.title}</h3>
+
+      <p>
+        {tsk.description}
+      </p>
+
+      <div className="meta">
+        <div>
+          <small>
+            Deadline
+          </small>
+
+          <b>
+            {new Date(
+              tsk.deadline_at
+            ).toLocaleString()}
+          </b>
+        </div>
+
+        <div>
+          <small>
+            Applicants
+          </small>
+
+          <b>
+            {tsk.applicant_count ||
+              0}
+            /10
+          </b>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="btn full"
+        disabled={busy}
+        onClick={apply}
+      >
+        {busy
+          ? t(
+              lang,
+              "እየተጠየቀ…",
+              "Applying…"
+            )
+          : t(
+              lang,
+              "ስራውን ጠይቅ",
+              "Apply for job"
+            )}
+      </button>
+    </div>
+  );
+}
+
+/* =========================================================
+   MY TASKS
+========================================================= */
+
+function MyTasks({
+  lang,
+  data,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  data: any;
+  session: any;
+  refresh: () => void;
+}) {
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            {t(
+              lang,
+              "የእኔ ስራ",
+              "My work"
+            )}
+          </h2>
+
+          <small className="muted">
+            {t(
+              lang,
+              "የተመረጠ ስራ ብቻ ንቁ ይሆናል",
+              "Only the selected job becomes active"
+            )}
+          </small>
+        </div>
+      </div>
+
+      {(data || []).map(
+        (x: any) => (
+          <WorkerTask
+            lang={lang}
+            key={x.id}
+            tsk={x}
+            session={session}
+            refresh={refresh}
+          />
+        )
+      )}
+
+      {!(data || []).length && (
+        <div className="card">
+          <p className="muted">
+            {t(
+              lang,
+              "እስካሁን የተመረጠ ስራ የለም።",
+              "No selected job yet."
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkerTask({
+  lang,
+  tsk,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  tsk: any;
+  session: any;
+  refresh: () => void;
+}) {
+  const [content, setContent] =
+    useState("");
+
+  const [files, setFiles] =
+    useState<any[]>([]);
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const send = async () => {
+    setBusy(true);
+
+    try {
+      await api(
+        session.access_token,
+        "submit-task",
+        {
+          taskId: tsk.id,
+          content,
+          files,
+        }
+      );
+
+      setContent("");
+      setFiles([]);
+      refresh();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const add = async (e: any) => {
+    const f =
+      e.target.files?.[0];
+
+    if (!f) return;
+
+    try {
+      const d = await upload(
+        session.access_token,
+        f
+      );
+
+      setFiles([
+        ...files,
+        d,
+      ]);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="task">
+      <div className="taskTop">
+        <span className="pill">
+          {tsk.status}
+        </span>
+
+        <b className="money">
+          {Number(
+            tsk.worker_reward || 0
+          ).toFixed(2)}{" "}
+          ብር
+        </b>
+      </div>
+
+      <h3>{tsk.title}</h3>
+
+      <div className="notice">
+        📋{" "}
+        <b>
+          {t(
+            lang,
+            "የደንበኛ ሙሉ መመሪያ",
+            "Full client brief"
+          )}
+        </b>
+
+        <p>
+          {tsk.description}
+        </p>
+
+        <p>
+          {tsk.requirements}
+        </p>
+      </div>
+
+      {(tsk.task_files || []).map(
+        (f: any) => (
+          <a
+            className="fileitem"
+            key={f.id}
+            href={`/api/file?path=${encodeURIComponent(
+              f.file_path
+            )}`}
+            target="_blank"
+          >
+            🎞️{" "}
+            {f.file_name ||
+              "Client file"}
+          </a>
+        )
+      )}
+
+      {tsk.status === "assigned" ||
+      tsk.status ===
+        "revision_requested" ? (
+        <>
+          <label className="label">
+            {t(
+              lang,
+              "የማብራሪያ / መልስ",
+              "Submission note"
+            )}
+          </label>
+
+          <textarea
+            className="textarea"
+            value={content}
+            onChange={(e) =>
+              setContent(
+                e.target.value
+              )
+            }
+          />
+
+          <label className="filebox">
+            <input
+              type="file"
+              accept="image/*,video/*,audio/*,.pdf,.zip"
+              onChange={add}
+            />
+
+            <span className="btn secondary">
+              📎{" "}
+              {t(
+                lang,
+                "ፋይል ያስገቡ",
+                "Upload file"
+              )}
+            </span>
+          </label>
+
+          {files.map(
+            (f: any) => (
+              <div
+                className="fileitem"
+                key={f.path}
+              >
+                ✓ {f.name}
+              </div>
+            )
+          )}
+
+          <button
+            type="button"
+            className="btn full"
+            disabled={
+              busy ||
+              (!content.trim() &&
+                !files.length)
+            }
+            onClick={send}
+          >
+            {busy
+              ? t(
+                  lang,
+                  "እየተላከ…",
+                  "Submitting…"
+                )
+              : t(
+                  lang,
+                  "ስራውን ላክ",
+                  "Submit work"
+                )}
+          </button>
+        </>
+      ) : tsk.status ===
+        "submitted" ? (
+        <div className="notice warning">
+          ⏳{" "}
+          {t(
+            lang,
+            "ደንበኛው እየገመገመ ነው።",
+            "Waiting for client review."
+          )}
+        </div>
+      ) : tsk.status ===
+        "completed" ? (
+        <div className="notice success">
+          ✓{" "}
+          {t(
+            lang,
+            "ተጠናቋል — ክፍያው ተለቋል።",
+            "Completed — payment released."
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =========================================================
+   POST JOB
+========================================================= */
+
+function PostJob({
+  lang,
+  session,
+  done,
+}: {
+  lang: Lang;
+  session: any;
+  done: () => void;
+}) {
+  const [f, setF] =
+    useState({
+      category:
+        "graphic_design",
+      title: "",
+      description: "",
+      requirements: "",
+      budget: "",
+      deadline: "24",
+    });
+
+  const [files, setFiles] =
+    useState<any[]>([]);
+
+  const [busy, setBusy] =
+    useState(false);
+
+  const add = async (e: any) => {
+    const file =
+      e.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      const d = await upload(
+        session.access_token,
+        file
+      );
+
+      setFiles([
+        ...files,
+        d,
+      ]);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const save = async () => {
+    setBusy(true);
+
+    try {
+      await api(
+        session.access_token,
+        "create-task",
+        {
+          ...f,
+          budget: Number(
+            f.budget
+          ),
+          deadlineHours:
+            Number(f.deadline),
+          files,
+        }
+      );
+
+      done();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            {t(
+              lang,
+              "ስራ ለጥፍ",
+              "Post a job"
+            )}
+          </h2>
+
+          <small className="muted">
+            {t(
+              lang,
+              "የተሟላ መመሪያ ይስጡ",
+              "Give workers a complete brief"
+            )}
+          </small>
+        </div>
+      </div>
+
+      <div className="card">
+        <label className="label">
+          Skill
+        </label>
+
+        <select
+          className="select"
+          value={f.category}
+          onChange={(e) =>
+            setF({
+              ...f,
+              category:
+                e.target.value,
+            })
+          }
+        >
+          {SKILLS.map((x) => (
+            <option
+              key={x[0]}
+              value={x[0]}
+            >
+              {x[2]} {x[1]}
+            </option>
+          ))}
+        </select>
+
+        <label className="label">
+          Title
+        </label>
+
+        <input
+          className="input"
+          value={f.title}
+          onChange={(e) =>
+            setF({
+              ...f,
+              title:
+                e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          Description
+        </label>
+
+        <textarea
+          className="textarea"
+          value={f.description}
+          onChange={(e) =>
+            setF({
+              ...f,
+              description:
+                e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          Requirements
+        </label>
+
+        <textarea
+          className="textarea"
+          value={f.requirements}
+          onChange={(e) =>
+            setF({
+              ...f,
+              requirements:
+                e.target.value,
+            })
+          }
+        />
+
+        <div className="grid2">
+          <div>
+            <label className="label">
+              Budget ETB
+            </label>
+
+            <input
+              className="input"
+              type="number"
+              value={f.budget}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  budget:
+                    e.target.value,
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="label">
+              Deadline hours
+            </label>
+
+            <input
+              className="input"
+              type="number"
+              value={f.deadline}
+              onChange={(e) =>
+                setF({
+                  ...f,
+                  deadline:
+                    e.target.value,
+                })
+              }
+            />
+          </div>
+        </div>
+
+        <label className="label">
+          Reference files / videos
+        </label>
+
+        <label className="filebox">
+          <input
+            type="file"
+            accept="image/*,video/*,audio/*,.pdf,.zip"
+            onChange={add}
+          />
+
+          <span className="btn secondary">
+            🎬{" "}
+            {t(
+              lang,
+              "ፎቶ / ቪዲዮ / ፋይል ጨምር",
+              "Add photo / video / file"
+            )}
+          </span>
+        </label>
+
+        {files.map(
+          (f: any) => (
+            <div
+              className="fileitem"
+              key={f.path}
+            >
+              ✓ {f.name}
+            </div>
+          )
+        )}
+
+        <button
+          type="button"
+          className="btn full"
+          style={{
+            marginTop: 14,
+          }}
+          disabled={busy}
+          onClick={save}
+        >
+          {busy
+            ? t(
+                lang,
+                "እየተለጠፈ…",
+                "Posting…"
+              )
+            : t(
+                lang,
+                "ስራውን ለጥፍ",
+                "Publish job"
+              )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   CLIENT POSTS
+========================================================= */
+
+function ClientPosts({
+  lang,
+  data,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  data: any;
+  session: any;
+  refresh: () => void;
+}) {
+  const [open, setOpen] =
+    useState<any>(null);
+
+  const [review, setReview] =
+    useState<any>(null);
+
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            {t(
+              lang,
+              "የለጥፍኳቸው ስራዎች",
+              "My posted jobs"
+            )}
+          </h2>
+        </div>
+      </div>
+
+      {(data || []).map(
+        (x: any) => (
+          <div
+            className="task"
+            key={x.id}
+          >
+            <div className="taskTop">
+              <span className="pill">
+                {x.status}
+              </span>
+
+              <b className="money">
+                {Number(
+                  x.worker_reward ||
+                    0
+                ).toFixed(2)}{" "}
+                ብር
+              </b>
+            </div>
+
+            <h3>{x.title}</h3>
+
+            <p>
+              {x.description}
+            </p>
+
+            <div className="meta">
+              <div>
+                <small>
+                  Applicants
+                </small>
+
+                <b>
+                  {x.applicant_count ||
+                    0}
+                  /10
+                </b>
+              </div>
+
+              <div>
+                <small>
+                  Deadline
+                </small>
+
+                <b>
+                  {new Date(
+                    x.deadline_at
+                  ).toLocaleString()}
+                </b>
+              </div>
+            </div>
+
+            <div className="grid2">
+              {x.status ===
+                "selection" && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() =>
+                    setOpen(x)
+                  }
+                >
+                  {t(
+                    lang,
+                    "አመልካቾች",
+                    "Applicants"
+                  )}
+                </button>
+              )}
+
+              {x.status ===
+                "submitted" && (
+                <button
+                  type="button"
+                  className="btn blue"
+                  onClick={() =>
+                    setReview(x)
+                  }
+                >
+                  {t(
+                    lang,
+                    "ስራውን ይገምግሙ",
+                    "Review submission"
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      )}
+
+      {open && (
+        <ApplicantModal
+          lang={lang}
+          task={open}
+          session={session}
+          close={() =>
+            setOpen(null)
+          }
+          refresh={refresh}
+        />
+      )}
+
+      {review && (
+        <SubmissionReview
+          lang={lang}
+          task={review}
+          session={session}
+          close={() =>
+            setReview(null)
+          }
+          refresh={refresh}
+        />
+      )}
+
+      {!(data || []).length && (
+        <div className="card">
+          <p className="muted">
+            {t(
+              lang,
+              "ምንም ስራ የለም።",
+              "No jobs posted yet."
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   SUBMISSION REVIEW
+========================================================= */
+
+function SubmissionReview({
+  lang,
+  task,
+  session,
+  close,
+  refresh,
+}: {
+  lang: Lang;
+  task: any;
+  session: any;
+  close: () => void;
+  refresh: () => void;
+}) {
+  const [sub, setSub] =
+    useState<any>(null);
+
+  const [reason, setReason] =
+    useState("");
+
+  const [busy, setBusy] =
+    useState(false);
+
+  useEffect(() => {
+    api(
+      session.access_token,
+      "submission",
+      {
+        taskId: task.id,
+      }
+    )
+      .then(setSub)
+      .catch((e) =>
+        alert(e.message)
+      );
+  }, [session, task.id]);
+
+  const decide = async (
+    d: string
+  ) => {
+    if (
+      d === "complain" &&
+      !reason.trim()
+    ) {
+      return alert(
+        "Describe the complaint first."
+      );
+    }
+
+    setBusy(true);
+
+    try {
+      await api(
+        session.access_token,
+        "review-submission",
+        {
+          taskId: task.id,
+          decision: d,
+          reason,
+        }
+      );
+
+      close();
+      refresh();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="row">
+        <h2>
+          {t(
+            lang,
+            "የተላከ ስራ",
+            "Submitted work"
+          )}
+        </h2>
+
+        <button
+          type="button"
+          className="iconbtn"
+          onClick={close}
+        >
+          ×
+        </button>
+      </div>
+
+      {sub?.content && (
+        <div className="notice">
+          {sub.content}
+        </div>
+      )}
+
+      {(sub?.submission_files ||
+        []).map(
+        (f: any) => (
+          <SecureFile
+            key={f.id}
+            file={f}
+            token={
+              session.access_token
+            }
+          />
+        )
+      )}
+
+      <label className="label">
+        {t(
+          lang,
+          "ቅሬታ መግለጫ — ካለ",
+          "Complaint description — if needed"
+        )}
+      </label>
+
+      <textarea
+        className="textarea"
+        value={reason}
+        onChange={(e) =>
+          setReason(
+            e.target.value
+          )
+        }
+        placeholder={t(
+          lang,
+          "ምን መሻሻል እንዳለ በግልጽ ይጻፉ።",
+          "Clearly describe what needs to be changed."
+        )}
+      />
+
+      <div
+        className="grid2"
+        style={{
+          marginTop: 12,
+        }}
+      >
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          onClick={() =>
+            decide("accept")
+          }
+        >
+          ✓{" "}
+          {t(
+            lang,
+            "ተቀበል",
+            "Accept"
+          )}
+        </button>
+
+        <button
+          type="button"
+          className="btn danger"
+          disabled={busy}
+          onClick={() =>
+            decide("complain")
+          }
+        >
+          ⚠{" "}
+          {t(
+            lang,
+            "ቅሬታ / ማሻሻያ",
+            "Complain / revise"
+          )}
+        </button>
+      </div>
+
+      <small
+        className="muted"
+        style={{
+          display: "block",
+          marginTop: 10,
+        }}
+      >
+        {t(
+          lang,
+          "ቅሬታ እስከ 2 ጊዜ ብቻ ይፈቀዳል።",
+          "A client can request changes up to 2 times."
+        )}
+      </small>
+    </div>
+  );
+}
+
+/* =========================================================
+   SECURE FILE
+========================================================= */
+
+function SecureFile({
+  file,
+  token,
+}: {
+  file: any;
+  token: string;
+}) {
+  const [url, setUrl] =
+    useState("");
+
+  useEffect(() => {
+    fetch(
+      `/api/file?path=${encodeURIComponent(
+        file.file_path
+      )}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    )
+      .then((r) => {
+        if (r.redirected) {
+          setUrl(r.url);
+        }
+      })
+      .catch(() => {});
+  }, [
+    file.file_path,
+    token,
+  ]);
+
+  useEffect(() => {
+    const w: any = window;
+
+    const plugin =
+      w.Capacitor?.Plugins
+        ?.SecureScreen;
+
+    if (plugin?.enable) {
+      plugin.enable().catch(
+        () => {}
+      );
+    }
+
+    return () => {
+      if (plugin?.disable) {
+        plugin
+          .disable()
+          .catch(() => {});
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className="filebox"
+      style={{
+        marginTop: 10,
+      }}
+    >
+      {url &&
+      file.mime_type?.startsWith(
+        "video/"
+      ) ? (
+        <video
+          src={url}
+          controls
+          style={{
+            width: "100%",
+            borderRadius: 16,
+          }}
+        />
+      ) : url &&
+        file.mime_type?.startsWith(
+          "image/"
+        ) ? (
+        <img
+          src={url}
+          alt="submission"
+          style={{
+            width: "100%",
+            borderRadius: 16,
+          }}
+        />
+      ) : (
+        <a
+          className="btn secondary"
+          href={url || "#"}
+          target="_blank"
+        >
+          🔐 Open protected file
+        </a>
+      )}
+
+      <small
+        className="muted"
+        style={{
+          display: "block",
+          marginTop: 8,
+        }}
+      >
+        Protected preview in the
+        Android app.
+      </small>
+    </div>
+  );
+}
+
+/* =========================================================
+   APPLICANTS
+========================================================= */
+
+function ApplicantModal({
+  lang,
+  task,
+  session,
+  close,
+  refresh,
+}: {
+  lang: Lang;
+  task: any;
+  session: any;
+  close: () => void;
+  refresh: () => void;
+}) {
+  const [list, setList] =
+    useState<any[]>([]);
+
+  const [busy, setBusy] =
+    useState(false);
+
+  useEffect(() => {
+    api(
+      session.access_token,
+      "applicants",
+      {
+        taskId: task.id,
+      }
+    )
+      .then(setList)
+      .catch((e) =>
+        alert(e.message)
+      );
+  }, [session, task.id]);
+
+  const choose = async (
+    id: string
+  ) => {
+    setBusy(true);
+
+    try {
+      await api(
+        session.access_token,
+        "choose-worker",
+        {
+          taskId: task.id,
+          workerId: id,
+        }
+      );
+
+      close();
+      refresh();
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <div className="row">
+        <h2>
+          {t(
+            lang,
+            "አመልካቾች",
+            "Applicants"
+          )}
+        </h2>
+
+        <button
+          type="button"
+          className="iconbtn"
+          onClick={close}
+        >
+          ×
+        </button>
+      </div>
+
+      <p className="muted">
+        {t(
+          lang,
+          "ፕሮፋይል፣ ችሎታ፣ ልምድ እና portfolio ይመልከቱ።",
+          "Review profile, skills, experience and portfolio."
+        )}
+      </p>
+
+      {list.map((a: any) => (
+        <div
+          className="card"
+          key={a.id}
+        >
+          <div className="profileHero">
+            <img
+              className="avatar"
+              src={
+                a.profiles
+                  ?.avatar_url ||
+                "/icon.svg"
+              }
+            />
+
+            <div>
+              <b>
+                {
+                  a.profiles
+                    ?.full_name
+                }
+              </b>
+
+              <small
+                className="muted"
+                style={{
+                  display: "block",
+                }}
+              >
+                {
+                  a.profiles
+                    ?.email
+                }
+              </small>
+            </div>
+          </div>
+
+          <p className="muted">
+            {a.profiles?.bio}
+          </p>
+
+          <div className="applicants">
+            {(
+              a.profiles
+                ?.worker_skills ||
+              []
+            ).map((s: any) => (
+              <span
+                className="pill"
+                key={s.skill_key}
+              >
+                {s.skill_key} ·{" "}
+                {
+                  s.years_experience
+                }
+                y
+              </span>
+            ))}
+          </div>
+
+          {a.profiles
+            ?.portfolio_url && (
+            <a
+              className="btn secondary"
+              style={{
+                display:
+                  "inline-block",
+                marginTop: 10,
+                textDecoration:
+                  "none",
+              }}
+              href={
+                a.profiles
+                  .portfolio_url
+              }
+              target="_blank"
+            >
+              🌐 Portfolio
+            </a>
+          )}
+
+          <button
+            type="button"
+            className="btn full"
+            style={{
+              marginTop: 10,
+            }}
+            disabled={
+              busy ||
+              task.status !==
+                "selection"
+            }
+            onClick={() =>
+              choose(
+                a.profiles.id
+              )
+            }
+          >
+            {t(
+              lang,
+              "ይህን ሰራተኛ ምረጥ",
+              "Select this worker"
+            )}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* =========================================================
+   NOTIFICATIONS
+========================================================= */
+
+function Notifications({
+  lang,
+  data,
+  session,
+}: {
+  lang: Lang;
+  data: any;
+  session: any;
+  refresh: () => void;
+}) {
+  useEffect(() => {
+    api(
+      session.access_token,
+      "read-notifications"
+    ).catch(() => {});
+  }, [session]);
+
+  return (
+    <div>
+      <div className="sectionTitle">
+        <h2>
+          {t(
+            lang,
+            "ማሳወቂያዎች",
+            "Notifications"
+          )}
+        </h2>
+      </div>
+
+      {(data || []).map(
+        (n: any) => (
+          <div
+            className="notice"
+            style={{
+              marginTop: 10,
+            }}
+            key={n.id}
+          >
+            <b>{n.title}</b>
+
+            <p
+              style={{
+                marginTop: 5,
+              }}
+            >
+              {n.body}
+            </p>
+
+            <small className="muted">
+              {new Date(
+                n.created_at
+              ).toLocaleString()}
+            </small>
+          </div>
+        )
+      )}
+
+      {!(data || []).length && (
+        <div className="card">
+          <p className="muted">
+            {t(
+              lang,
+              "ማሳወቂያ የለም።",
+              "No notifications yet."
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   WALLET
+========================================================= */
+
+function Wallet({
+  lang,
+  data,
+  session,
+  refresh,
+}: {
+  lang: Lang;
+  data: any;
+  session: any;
+  refresh: () => void;
+}) {
+  const [amount, setAmount] =
+    useState("");
+
+  const [account, setAccount] =
+    useState("");
+
+  const withdraw = async () => {
+    try {
+      await api(
+        session.access_token,
+        "withdraw",
+        {
+          amount: Number(amount),
+          method: "telebirr",
+          accountNumber:
+            account,
+          accountName: "",
+        }
+      );
+
+      setAmount("");
+
+      refresh();
+
+      alert(
+        "Withdrawal submitted"
+      );
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="hero">
+        <div className="eyebrow">
+          ETB WALLET
+        </div>
+
+        <h1>
+          {Number(
+            data.wallet?.available ||
+              0
+          ).toFixed(2)}{" "}
+          ብር
+        </h1>
+
+        <p className="muted">
+          Available balance
+        </p>
+      </div>
+
+      <div className="card">
+        <h3>
+          Withdraw
+        </h3>
+
+        <label className="label">
+          Amount ETB
+        </label>
+
+        <input
+          className="input"
+          type="number"
+          value={amount}
+          onChange={(e) =>
+            setAmount(
+              e.target.value
+            )
+          }
+        />
+
+        <label className="label">
+          Telebirr / account number
+        </label>
+
+        <input
+          className="input"
+          value={account}
+          onChange={(e) =>
+            setAccount(
+              e.target.value
+            )
+          }
+        />
+
+        <button
+          type="button"
+          className="btn full"
+          style={{
+            marginTop: 12,
+          }}
+          onClick={withdraw}
+        >
+          Request withdrawal
+        </button>
+      </div>
+
+      <div className="sectionTitle">
+        <h3>
+          Recent activity
+        </h3>
+      </div>
+
+      {(data.ledger || []).map(
+        (x: any) => (
+          <div
+            className="notice"
+            style={{
+              marginTop: 8,
+            }}
+            key={x.id}
+          >
+            <div className="row">
+              <b>
+                {x.description ||
+                  x.type}
+              </b>
+
+              <b
+                className={
+                  Number(x.amount) >=
+                  0
+                    ? "money"
+                    : ""
+                }
+              >
+                {Number(
+                  x.amount
+                ).toFixed(2)}{" "}
+                ETB
+              </b>
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   PROFILE
+========================================================= */
+
+function Profile({
+  lang,
+  profile,
+  session,
+  signout,
+}: {
+  lang: Lang;
+  profile: any;
+  session: any;
+  signout: () => void;
+}) {
+  const [p, setP] =
+    useState(profile || {});
+
+  const save = async () => {
+    try {
+      await api(
+        session.access_token,
+        "update-profile",
+        {
+          fullName:
+            p.full_name,
+          bio: p.bio,
+          portfolioUrl:
+            p.portfolio_url,
+          avatarUrl:
+            p.avatar_url,
+        }
+      );
+
+      alert(
+        "Profile saved"
+      );
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="card">
+        <div className="profileHero">
+          <img
+            className="profilePic"
+            src={
+              p.avatar_url ||
+              "/icon.svg"
+            }
+          />
+
+          <div>
+            <h2>
+              {p.full_name ||
+                "Sera User"}
+            </h2>
+
+            <small className="muted">
+              {p.email}
+            </small>
+
+            <div
+              className="pill"
+              style={{
+                marginTop: 6,
+              }}
+            >
+              {p.face_verification_status ||
+                "pending"}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <label className="label">
+          Full name
+        </label>
+
+        <input
+          className="input"
+          value={
+            p.full_name || ""
+          }
+          onChange={(e) =>
+            setP({
+              ...p,
+              full_name:
+                e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          Bio
+        </label>
+
+        <textarea
+          className="textarea"
+          value={p.bio || ""}
+          onChange={(e) =>
+            setP({
+              ...p,
+              bio: e.target.value,
+            })
+          }
+        />
+
+        <label className="label">
+          Portfolio URL
+        </label>
+
+        <input
+          className="input"
+          value={
+            p.portfolio_url ||
+            ""
+          }
+          onChange={(e) =>
+            setP({
+              ...p,
+              portfolio_url:
+                e.target.value,
+            })
+          }
+        />
+
+        <button
+          type="button"
+          className="btn full"
+          style={{
+            marginTop: 12,
+          }}
+          onClick={save}
+        >
+          Save profile
+        </button>
+
+        {p.is_admin && (
+          <button
+            type="button"
+            className="btn secondary full"
+            style={{
+              marginTop: 10,
+            }}
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent(
+                  "sera-admin"
+                )
+              )
+            }
+          >
+            Admin review
+          </button>
+        )}
+
+        <button
+          type="button"
+          className="btn danger full"
+          style={{
+            marginTop: 10,
+          }}
+          onClick={signout}
+        >
+          Log out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   ADMIN
+========================================================= */
+
+function Admin({
+  lang,
+  session,
+}: {
+  lang: Lang;
+  session: any;
+}) {
+  const [list, setList] =
+    useState<any[]>([]);
+
+  const load = () =>
+    api(
+      session.access_token,
+      "admin-workers"
+    )
+      .then(setList)
+      .catch((e) =>
+        alert(e.message)
+      );
+
+  useEffect(() => {
+    void load();
+  }, [session]);
+
+  const act = async (
+    id: string,
+    status: string
+  ) => {
+    try {
+      await api(
+        session.access_token,
+        "admin-verify-worker",
+        {
+          userId: id,
+          status,
+        }
+      );
+
+      load();
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
+  return (
+    <div>
+      <div className="sectionTitle">
+        <div>
+          <h2>
+            🛡️{" "}
+            {t(
+              lang,
+              "የሰራተኛ ማረጋገጫ",
+              "Worker verification"
+            )}
+          </h2>
+
+          <small className="muted">
+            {t(
+              lang,
+              "የፊት ፎቶ እና selfie ይገምግሙ።",
+              "Review profile photo and selfie submissions."
+            )}
+          </small>
+        </div>
+      </div>
+
+      {list.map(
+        (p: any) => (
+          <div
+            className="card"
+            key={p.id}
+          >
+            <div className="profileHero">
+              <img
+                className="profilePic"
+                src={
+                  p.avatar_url ||
+                  "/icon.svg"
+                }
+              />
+
+              <div>
+                <h3>
+                  {p.full_name}
+                </h3>
+
+                <small className="muted">
+                  {p.email}
+                </small>
+              </div>
+            </div>
+
+            <div
+              className="grid2"
+              style={{
+                marginTop: 12,
+              }}
+            >
+              {p.selfie_path && (
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={async () => {
+                    const r =
+                      await fetch(
+                        `/api/file?path=${encodeURIComponent(
+                          p.selfie_path
+                        )}`,
+                        {
+                          headers: {
+                            Authorization: `Bearer ${session.access_token}`,
+                          },
+                        }
+                      );
+
+                    if (
+                      r.redirected
+                    ) {
+                      window.open(
+                        r.url,
+                        "_blank"
+                      );
+                    }
+                  }}
+                >
+                  🤳 Selfie
+                </button>
+              )}
+
+              {p.portfolio_url && (
+                <a
+                  className="btn secondary"
+                  href={
+                    p.portfolio_url
+                  }
+                  target="_blank"
+                >
+                  🌐 Portfolio
+                </a>
+              )}
+            </div>
+
+            <div
+              className="applicants"
+              style={{
+                marginTop: 10,
+              }}
+            >
+              {(
+                p.worker_skills ||
+                []
+              ).map(
+                (s: any) => (
+                  <span
+                    className="pill"
+                    key={
+                      s.skill_key
+                    }
+                  >
+                    {
+                      s.skill_key
+                    }{" "}
+                    ·{" "}
+                    {
+                      s.years_experience
+                    }
+                    y
+                  </span>
+                )
+              )}
+            </div>
+
+            <div
+              className="grid2"
+              style={{
+                marginTop: 12,
+              }}
+            >
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  act(
+                    p.id,
+                    "verified"
+                  )
+                }
+              >
+                ✓ Verify
+              </button>
+
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() =>
+                  act(
+                    p.id,
+                    "rejected"
+                  )
+                }
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        )
+      )}
+
+      {!list.length && (
+        <div className="card">
+          <p className="muted">
+            No pending workers.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+
+function Nav({
+  role,
+  tab,
+  setTab,
+}: {
+  role: Role;
+  tab: string;
+  setTab: (x: string) => void;
+}) {
+  const items =
+    role === "worker"
+      ? [
+          ["home", "⌂", "Home"],
+          ["tasks", "◈", "Jobs"],
+          ["my", "✓", "My work"],
+          ["wallet", "◉", "Wallet"],
+          ["profile", "●", "Profile"],
+        ]
+      : [
+          ["home", "⌂", "Home"],
+          ["post", "＋", "Post"],
+          ["posts", "▣", "My jobs"],
+          ["wallet", "◉", "Wallet"],
+          ["profile", "●", "Profile"],
+        ];
+
+  return (
+    <nav className="bottom">
+      {items.map(
+        ([id, ic, label]) => (
+          <button
+            type="button"
+            className={
+              tab === id
+                ? "active"
+                : ""
+            }
+            key={id}
+            onClick={() =>
+              setTab(id)
+            }
+          >
+            <span>{ic}</span>
+            {label}
+          </button>
+        )
+      )}
+    </nav>
+  );
+   }
