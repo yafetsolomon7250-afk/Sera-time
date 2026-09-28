@@ -1,78 +1,89 @@
-import { createClient, SupabaseClient, User } from "@supabase/supabase-js";
 
-let _db: SupabaseClient | null = null;
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
+
+let serverDb: SupabaseClient | null = null;
 
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   "https://gosytupmjddrmtdvzotp.supabase.co";
 
-function serverKey() {
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SECRET_KEY;
+const PUBLIC_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "sb_publishable_jnjtlsiNBz-d8TO3Toyo9Q_vxLKa3Zf";
 
-  if (!key) {
-    throw new Error(
-      "Server Supabase key is missing. Set SUPABASE_SERVICE_ROLE_KEY in Vercel."
-    );
+/*
+ * IMPORTANT
+ *
+ * Browser/public key:
+ *   sb_publishable_...
+ *
+ * Server database key:
+ *   SUPABASE_SERVICE_ROLE_KEY
+ *   OR SUPABASE_SECRET_KEY
+ *
+ * Never use the publishable key as the server database key.
+ */
+function getServerKey(): string {
+  // Prefer SERVICE_ROLE first.
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (serviceRole && !serviceRole.startsWith("sb_publishable_")) {
+    return serviceRole;
   }
 
-  // Never allow a browser/publishable key to be used as the server key.
-  if (key.startsWith("sb_publishable_")) {
-    throw new Error(
-      "SUPABASE_SERVICE_ROLE_KEY is a publishable key. Use the Supabase service_role key or sb_secret key instead."
-    );
+  // New Supabase secret key.
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+
+  if (secretKey && !secretKey.startsWith("sb_publishable_")) {
+    return secretKey;
   }
 
-  return key;
-}
-
-function publicKey() {
-  return (
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    "sb_publishable_jnjtlsiNBz-d8TO3Toyo9Q_vxLKa3Zf"
+  throw new Error(
+    "Sera Time server database key is missing or invalid. " +
+      "Set SUPABASE_SERVICE_ROLE_KEY to the Supabase server/service-role key."
   );
 }
 
-/**
- * SERVER-ONLY database client.
+/*
+ * SERVER DATABASE CLIENT
  *
- * IMPORTANT:
- * - Never import this module into client/browser code.
- * - All public table access is intentionally performed here.
- * - The database revokes anon/authenticated table permissions, so this
- *   client MUST use the server service_role/sb_secret key.
+ * This is the ONLY client that accesses public tables.
  */
 export function db(): SupabaseClient {
-  if (_db) return _db;
+  if (serverDb) return serverDb;
 
-  const key = serverKey();
+  const key = getServerKey();
 
-  _db = createClient(SUPABASE_URL, key, {
+  serverDb = createClient(SUPABASE_URL, key, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
+
     global: {
       headers: {
-        // Explicitly force the server credential on every PostgREST request.
         Authorization: `Bearer ${key}`,
         apikey: key,
       },
     },
   });
 
-  return _db;
+  return serverDb;
 }
 
-/** Validate the user's Auth access token without ever using the browser key for database access. */
+/*
+ * Authenticate the user.
+ *
+ * The publishable key is used ONLY to validate the login session.
+ * Database operations below use db(), which uses the server key.
+ */
 export async function authUser(accessToken: string) {
-  if (!accessToken) throw new Error("Please log in first.");
+  if (!accessToken) {
+    throw new Error("Please log in first.");
+  }
 
-  // Validate the user's JWT with Supabase Auth.
-  // The database client remains completely separate from the browser client.
-  const auth = createClient(SUPABASE_URL, publicKey(), {
+  const authClient = createClient(SUPABASE_URL, PUBLIC_KEY, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -80,41 +91,66 @@ export async function authUser(accessToken: string) {
     },
   });
 
-  const { data: authData, error: authError } =
-    await auth.auth.getUser(accessToken);
+  const {
+    data: authData,
+    error: authError,
+  } = await authClient.auth.getUser(accessToken);
 
   if (authError || !authData.user) {
     throw new Error("Your session has expired. Please log in again.");
   }
 
-  const au: User = authData.user;
-  const adminEmail = "yafet.tech0990@gmail.com";
-  const isAdminEmail =
-    String(au.email || "").trim().toLowerCase() === adminEmail;
+  const authUser = authData.user;
 
-  // EVERYTHING below this line uses db(), never the browser client.
-  const { data: profile, error: profileError } = await db()
+  const adminEmail = "yafet.tech0990@gmail.com";
+
+  const isAdmin =
+    String(authUser.email || "")
+      .trim()
+      .toLowerCase() === adminEmail;
+
+  /*
+   * IMPORTANT:
+   * From here onward we use SERVER db().
+   */
+  const {
+    data: profile,
+    error: profileError,
+  } = await db()
     .from("profiles")
     .select("*")
-    .eq("id", au.id)
+    .eq("id", authUser.id)
     .maybeSingle();
 
   if (profileError) {
-    throw new Error(`Server database access failed: ${profileError.message}`);
+    throw new Error(
+      `Server could not access profiles: ${profileError.message}`
+    );
   }
 
+  /*
+   * Existing profile
+   */
   if (profile) {
-    if (isAdminEmail && !profile.is_admin) {
-      const { data: promoted, error: promoteError } = await db()
+    /*
+     * Automatically make the configured admin email admin.
+     */
+    if (isAdmin && !profile.is_admin) {
+      const {
+        data: promoted,
+        error: promoteError,
+      } = await db()
         .from("profiles")
-        .update({ is_admin: true })
-        .eq("id", au.id)
+        .update({
+          is_admin: true,
+        })
+        .eq("id", authUser.id)
         .select("*")
         .single();
 
       if (promoteError) {
         throw new Error(
-          `Could not promote admin account: ${promoteError.message}`
+          `Could not update admin profile: ${promoteError.message}`
         );
       }
 
@@ -124,76 +160,139 @@ export async function authUser(accessToken: string) {
     return profile;
   }
 
+  /*
+   * Create profile for a new authenticated user.
+   */
   const fullName = String(
-    au.user_metadata?.full_name ||
-      au.user_metadata?.name ||
-      au.email?.split("@")[0] ||
+    authUser.user_metadata?.full_name ||
+      authUser.user_metadata?.name ||
+      authUser.email?.split("@")[0] ||
       "Sera User"
   ).slice(0, 160);
 
-  const { data: created, error: createError } = await db()
+  const {
+    data: createdProfile,
+    error: createProfileError,
+  } = await db()
     .from("profiles")
     .insert({
-      id: au.id,
-      email: au.email || "",
+      id: authUser.id,
+      email: authUser.email || "",
       full_name: fullName,
-      is_admin: isAdminEmail,
+      is_admin: isAdmin,
     })
     .select("*")
     .single();
 
-  if (createError) {
-    throw new Error(`Could not create profile: ${createError.message}`);
+  if (createProfileError) {
+    throw new Error(
+      `Could not create Sera Time profile: ${createProfileError.message}`
+    );
   }
 
-  const { error: walletError } = await db()
+  /*
+   * Create wallet.
+   */
+  const {
+    error: walletError,
+  } = await db()
     .from("wallets")
-    .upsert({ user_id: au.id }, { onConflict: "user_id" });
+    .upsert(
+      {
+        user_id: authUser.id,
+      },
+      {
+        onConflict: "user_id",
+      }
+    );
 
   if (walletError) {
-    throw new Error(`Could not create wallet: ${walletError.message}`);
+    throw new Error(
+      `Could not create wallet: ${walletError.message}`
+    );
   }
 
-  return created;
+  return createdProfile;
 }
 
-export function text(v: any, max = 10000) {
-  return String(v ?? "").trim().slice(0, max);
+/*
+ * Safe text helper.
+ */
+export function text(value: any, max = 10000) {
+  return String(value ?? "")
+    .trim()
+    .slice(0, max);
 }
 
-export function num(v: any, d = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : d;
+/*
+ * Safe number helper.
+ */
+export function num(value: any, defaultValue = 0) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : defaultValue;
 }
 
+/*
+ * Send notification.
+ */
 export async function notify(
   userId: string,
   title: string,
   body: string,
   type = "system"
 ) {
-  const { error } = await db()
+  const {
+    error,
+  } = await db()
     .from("notifications")
-    .insert({ user_id: userId, title, body, type });
+    .insert({
+      user_id: userId,
+      title,
+      body,
+      type,
+    });
 
-  if (error) throw new Error(`Notification failed: ${error.message}`);
+  if (error) {
+    throw new Error(
+      `Notification failed: ${error.message}`
+    );
+  }
 }
 
+/*
+ * Send notification to multiple users.
+ */
 export async function manyNotify(
-  ids: string[],
+  userIds: string[],
   title: string,
   body: string,
   type = "system"
 ) {
-  const rows = [...new Set(ids)].map((user_id) => ({
+  const rows = [
+    ...new Set(userIds),
+  ].map((user_id) => ({
     user_id,
     title,
     body,
     type,
   }));
 
-  if (!rows.length) return;
+  if (!rows.length) {
+    return;
+  }
 
-  const { error } = await db().from("notifications").insert(rows);
-  if (error) throw new Error(`Notifications failed: ${error.message}`);
+  const {
+    error,
+  } = await db()
+    .from("notifications")
+    .insert(rows);
+
+  if (error) {
+    throw new Error(
+      `Notifications failed: ${error.message}`
+    );
+  }
 }
