@@ -165,6 +165,12 @@ create index if not exists idx_task_app_worker_status on public.task_application
 create index if not exists idx_task_app_task on public.task_applications(task_id,status);
 create index if not exists idx_notifications_user on public.notifications(user_id,created_at desc);
 
+-- A worker can never have more than one active assigned job at a time.
+drop index if exists public.one_active_job_per_worker;
+create unique index one_active_job_per_worker
+on public.tasks(assigned_worker_id)
+where status in ('assigned','submitted','revision_requested','disputed');
+
 insert into storage.buckets(id,name,public) values('sera-files','sera-files',false) on conflict(id) do nothing;
 insert into storage.buckets(id,name,public) values('sera-public','sera-public',true) on conflict(id) do nothing;
 
@@ -191,6 +197,7 @@ begin
  if v_task.status<>'open' then raise exception 'This job is no longer accepting applications'; end if;
  if exists(select 1 from public.profiles where id=p_worker_id and (banned or worker_onboarded=false)) then raise exception 'Worker profile is not approved for applications'; end if;
  if not exists(select 1 from public.worker_skills where user_id=p_worker_id and skill_key=v_task.category) then raise exception 'This job does not match your selected skills'; end if;
+ if exists(select 1 from public.tasks where assigned_worker_id=p_worker_id and status in('assigned','submitted','revision_requested','disputed')) then raise exception 'You already have an active job'; end if;
  select count(*) into v_pending from public.task_applications where worker_id=p_worker_id and status='pending';
  if v_pending>=5 then raise exception 'You already have 5 pending applications'; end if;
  if exists(select 1 from public.task_applications where task_id=p_task_id and worker_id=p_worker_id and status in('pending','selected')) then raise exception 'You already applied'; end if;
@@ -209,6 +216,7 @@ begin
  select * into v_task from public.tasks where id=p_task_id for update;
  if v_task.client_id<>p_client_id then raise exception 'Not your job'; end if;
  if v_task.status<>'selection' then raise exception 'The job must reach 10 applicants before selection'; end if;
+ if exists(select 1 from public.tasks where assigned_worker_id=p_worker_id and status in('assigned','submitted','revision_requested','disputed')) then raise exception 'This worker already has an active job'; end if;
  if not exists(select 1 from public.task_applications where task_id=p_task_id and worker_id=p_worker_id and status='pending') then raise exception 'Worker is not a pending applicant'; end if;
  update public.task_applications set status='rejected',decided_at=now() where task_id=p_task_id and status='pending' and worker_id<>p_worker_id;
  update public.task_applications set status='selected',decided_at=now() where task_id=p_task_id and worker_id=p_worker_id;
@@ -252,6 +260,47 @@ begin
  return v_task;
 end $$;
 
+
+
+create or replace function public.admin_deposit(p_admin_id uuid,p_deposit_id uuid,p_status text,p_reason text default '')
+returns public.deposits language plpgsql security definer as $$
+declare v public.deposits;
+begin
+ if not exists(select 1 from public.profiles where id=p_admin_id and is_admin=true) then raise exception 'Admin access required'; end if;
+ select * into v from public.deposits where id=p_deposit_id for update;
+ if not found or v.status<>'pending' then raise exception 'Deposit is not pending'; end if;
+ if p_status='approved' then
+   update public.deposits set status='approved' where id=v.id returning * into v;
+   update public.wallets set available=available+v.amount,updated_at=now() where user_id=v.user_id;
+   insert into public.ledger_entries(user_id,type,amount,description,reference_id) values(v.user_id,'deposit',v.amount,'Deposit approved by admin',v.id::text);
+   insert into public.notifications(user_id,title,body,type) values(v.user_id,'Deposit approved','Your ETB deposit was approved and added to your wallet.','deposit_approved');
+ elsif p_status='rejected' then
+   update public.deposits set status='rejected' where id=v.id returning * into v;
+   insert into public.notifications(user_id,title,body,type) values(v.user_id,'Deposit rejected',coalesce(nullif(p_reason,''),'Your deposit was rejected.'),'deposit_rejected');
+ else raise exception 'Invalid deposit status'; end if;
+ return v;
+end $$;
+
+create or replace function public.admin_withdrawal(p_admin_id uuid,p_withdrawal_id uuid,p_status text,p_reason text default '')
+returns public.withdrawals language plpgsql security definer as $$
+declare v public.withdrawals;
+begin
+ if not exists(select 1 from public.profiles where id=p_admin_id and is_admin=true) then raise exception 'Admin access required'; end if;
+ select * into v from public.withdrawals where id=p_withdrawal_id for update;
+ if not found or v.status<>'pending' then raise exception 'Withdrawal is not pending'; end if;
+ if p_status='paid' then
+   update public.withdrawals set status='paid',processed_at=now() where id=v.id returning * into v;
+   update public.wallets set reserved=greatest(0,reserved-v.amount),updated_at=now() where user_id=v.user_id;
+   insert into public.ledger_entries(user_id,type,amount,description,reference_id) values(v.user_id,'withdrawal_paid',-v.amount,'Withdrawal paid',v.id::text);
+   insert into public.notifications(user_id,title,body,type) values(v.user_id,'Withdrawal paid','Your ETB withdrawal was marked as paid.','withdrawal_paid');
+ elsif p_status='rejected' then
+   update public.withdrawals set status='rejected',rejection_reason=coalesce(nullif(p_reason,''),'Withdrawal rejected'),processed_at=now() where id=v.id returning * into v;
+   update public.wallets set reserved=greatest(0,reserved-v.amount),available=available+v.amount,updated_at=now() where user_id=v.user_id;
+   insert into public.ledger_entries(user_id,type,amount,description,reference_id) values(v.user_id,'withdrawal_refund',v.amount,'Rejected withdrawal refunded',v.id::text);
+   insert into public.notifications(user_id,title,body,type) values(v.user_id,'Withdrawal rejected',v.rejection_reason,'withdrawal_rejected');
+ else raise exception 'Invalid withdrawal status'; end if;
+ return v;
+end $$;
 create or replace function public.create_market_withdrawal(p_user_id uuid,p_amount numeric,p_method text,p_account_number text,p_account_name text)
 returns public.withdrawals language plpgsql security definer as $$
 declare v public.withdrawals;
@@ -262,3 +311,29 @@ begin
  insert into public.withdrawals(user_id,amount,method,account_number,account_name) values(p_user_id,p_amount,p_method,p_account_number,p_account_name) returning * into v;
  return v;
 end $$;
+
+
+-- ============================================================
+-- SERVER-ONLY DATA API SECURITY
+-- The browser uses Supabase Auth only. All Sera Time database access
+-- goes through the Next.js server using the server secret/service key.
+-- Never put the server secret in NEXT_PUBLIC_* variables.
+-- ============================================================
+
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+revoke all on all functions in schema public from anon, authenticated;
+
+grant usage on schema public to service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select, update on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+
+-- Enable RLS as defense in depth. The server service role bypasses these policies.
+DO $$ DECLARE r record; BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP
+    EXECUTE format('alter table public.%I enable row level security', r.tablename);
+  END LOOP;
+END $$;
+
+notify pgrst, 'reload schema';
